@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Food Aggregator — Database System</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <title>Food Aggregator</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 
 <body>
@@ -13,80 +13,64 @@
       <div class="logo">FA</div>
       <div>
         <div class="brand-title">Food Aggregator</div>
-        <div class="brand-sub">Flask + MySQL • Normalized Relational DB</div>
+        <div class="brand-sub">Flask + XAMPP MySQL • Server Rendered</div>
       </div>
     </div>
 
     <div class="top-actions">
-      <button class="pill" id="refreshBtn">Refresh data</button>
-      <a class="pill ghost" href="https://dev.mysql.com/doc/" target="_blank" rel="noreferrer">Docs</a>
+      <a class="pill ghost" href="{{ url_for('index', tab=tab) }}">Refresh</a>
     </div>
   </header>
 
   <main class="wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashwrap">
+          {% for category, msg in messages %}
+            <div class="flash {{ category }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     <section class="hero">
       <div class="hero-left">
-        <h1>Modern food delivery database demo</h1>
+        <h1>Food Delivery Aggregator Database</h1>
         <p>
-          Manage <b>Users</b>, <b>Restaurants</b>, <b>Menus</b>, <b>Orders</b>, <b>Deliveries</b>, and
-          <b>Reviews</b> with integrity constraints and accurate financial history via
-          <b>price_at_purchase</b>.
+          Manage Users, Restaurants, Menu Items, Orders, Delivery Assignments, and Reviews.
+          OrderItems store <b>price_at_purchase</b> so history stays accurate.
         </p>
-
-        <div class="kpis">
-          <div class="kpi">
-            <div class="kpi-title">Normalization</div>
-            <div class="kpi-value">Up to 3NF</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-title">Integrity</div>
-            <div class="kpi-value">PK/FK + checks</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-title">Pricing</div>
-            <div class="kpi-value">Captured at purchase</div>
-          </div>
-        </div>
       </div>
 
       <div class="hero-right card glow">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Quick Start</div>
-            <div class="card-sub">Create a customer → restaurant → menu → place order.</div>
-          </div>
-          <span class="badge" id="healthBadge">API: checking…</span>
-        </div>
-
-        <ol class="steps">
-          <li>Create a <b>Customer</b> user</li>
+        <div class="card-title">Quick Tips</div>
+        <ul class="steps">
+          <li>Create a <b>Customer</b> and a <b>Delivery Agent</b></li>
           <li>Create a <b>Restaurant</b></li>
           <li>Add <b>Menu Items</b></li>
-          <li>Place an <b>Order</b> and track it</li>
-        </ol>
+          <li>Place and Track <b>Orders</b></li>
+        </ul>
       </div>
     </section>
 
     <section class="grid">
-      <!-- LEFT: Actions -->
       <div class="col">
         <div class="tabs">
-          <button class="tab active" data-tab="users">Users</button>
-          <button class="tab" data-tab="restaurants">Restaurants</button>
-          <button class="tab" data-tab="menu">Menu</button>
-          <button class="tab" data-tab="orders">Orders</button>
-          <button class="tab" data-tab="delivery">Delivery</button>
-          <button class="tab" data-tab="reviews">Reviews</button>
+          <a class="tab {{ 'active' if tab=='users' else '' }}" href="{{ url_for('index', tab='users') }}">Users</a>
+          <a class="tab {{ 'active' if tab=='restaurants' else '' }}" href="{{ url_for('index', tab='restaurants') }}">Restaurants</a>
+          <a class="tab {{ 'active' if tab=='menu' else '' }}" href="{{ url_for('index', tab='menu') }}">Menu</a>
+          <a class="tab {{ 'active' if tab=='orders' else '' }}" href="{{ url_for('index', tab='orders') }}">Orders</a>
+          <a class="tab {{ 'active' if tab=='delivery' else '' }}" href="{{ url_for('index', tab='delivery') }}">Delivery</a>
+          <a class="tab {{ 'active' if tab=='reviews' else '' }}" href="{{ url_for('index', tab='reviews') }}">Reviews</a>
         </div>
 
         <!-- USERS -->
-        <div class="panel active" id="tab-users">
+        {% if tab == 'users' %}
+        <div class="panel active">
           <div class="panel-title">Create User</div>
-          <form id="userForm" class="form">
+          <form class="form" method="post" action="{{ url_for('create_user') }}">
             <div class="row">
-              <label>Full name
-                <input name="full_name" placeholder="Ayesha Khan" required />
-              </label>
+              <label>Full name <input name="full_name" required></label>
               <label>Type
                 <select name="type" required>
                   <option>Customer</option>
@@ -95,59 +79,49 @@
                 </select>
               </label>
             </div>
-
             <div class="row">
-              <label>Email
-                <input name="email" type="email" placeholder="ayesha@example.com" required />
-              </label>
-              <label>Phone
-                <input name="phone_number" placeholder="+92..." required />
-              </label>
+              <label>Email <input name="email" type="email" required></label>
+              <label>Phone <input name="phone_number" required></label>
             </div>
-
-            <label>Address (optional)
-              <input name="address" placeholder="House #, Street, City" />
-            </label>
-
-            <button class="btn primary" type="submit">Create user</button>
-            <pre class="out" id="userOut"></pre>
+            <label>Address <input name="address"></label>
+            <button class="btn primary" type="submit">Create</button>
           </form>
         </div>
+        {% endif %}
 
         <!-- RESTAURANTS -->
-        <div class="panel" id="tab-restaurants">
+        {% if tab == 'restaurants' %}
+        <div class="panel active">
           <div class="panel-title">Create Restaurant</div>
-          <form id="restaurantForm" class="form">
-            <label>Name
-              <input name="name" placeholder="Spice Hub" required />
-            </label>
-            <label>Address
-              <input name="address" placeholder="Main Road, City" required />
-            </label>
+          <form class="form" method="post" action="{{ url_for('create_restaurant') }}">
+            <label>Name <input name="name" required></label>
+            <label>Address <input name="address" required></label>
             <label>Status
               <select name="status">
                 <option>Active</option>
                 <option>Inactive</option>
               </select>
             </label>
-
-            <button class="btn primary" type="submit">Create restaurant</button>
-            <pre class="out" id="restaurantOut"></pre>
+            <button class="btn primary" type="submit">Create</button>
           </form>
         </div>
+        {% endif %}
 
         <!-- MENU -->
-        <div class="panel" id="tab-menu">
+        {% if tab == 'menu' %}
+        <div class="panel active">
           <div class="panel-title">Add Menu Item</div>
-          <form id="menuForm" class="form">
+          <form class="form" method="post" action="{{ url_for('create_menu_item') }}">
             <label>Restaurant
-              <select name="restaurant_id" id="menuRestaurantSelect"></select>
+              <select name="restaurant_id" required>
+                {% for r in restaurants %}
+                  <option value="{{ r.restaurant_id }}">#{{ r.restaurant_id }} — {{ r.name }}</option>
+                {% endfor %}
+              </select>
             </label>
 
             <div class="row">
-              <label>Item name
-                <input name="name" placeholder="Chicken Biryani" required />
-              </label>
+              <label>Item name <input name="name" required></label>
               <label>Category
                 <select name="category">
                   <option value="Food">Food</option>
@@ -157,40 +131,25 @@
             </div>
 
             <div class="row">
-              <label>Price
-                <input name="price" type="number" step="0.01" placeholder="499.00" required />
-              </label>
+              <label>Price <input name="price" type="number" step="0.01" required></label>
               <label class="check">
-                <input name="availability" type="checkbox" checked />
-                Available
+                <input type="checkbox" name="availability" checked> Available
               </label>
             </div>
 
-            <button class="btn primary" type="submit">Add menu item</button>
-            <pre class="out" id="menuOut"></pre>
+            <button class="btn primary" type="submit">Add</button>
           </form>
-
-          <div class="divider"></div>
-
-          <div class="panel-title">View Menu</div>
-          <div class="form">
-            <label>Restaurant
-              <select id="viewMenuRestaurantSelect"></select>
-            </label>
-            <button class="btn" id="loadMenuBtn" type="button">Load menu</button>
-            <div class="list" id="menuList"></div>
-          </div>
         </div>
+        {% endif %}
 
         <!-- ORDERS -->
-        <div class="panel" id="tab-orders">
+        {% if tab == 'orders' %}
+        <div class="panel active">
           <div class="panel-title">Place Order</div>
-          <form id="orderForm" class="form">
+          <form class="form" method="post" action="{{ url_for('place_order') }}">
             <div class="row">
-              <label>Customer ID
-                <input name="user_id" type="number" placeholder="1" required />
-              </label>
-              <label>Payment method
+              <label>Customer ID <input name="user_id" type="number" required></label>
+              <label>Payment
                 <select name="payment_method" required>
                   <option value="COD">COD</option>
                   <option value="Online">Online</option>
@@ -199,38 +158,43 @@
             </div>
 
             <label>Restaurant
-              <select name="restaurant_id" id="orderRestaurantSelect"></select>
+              <select name="restaurant_id" required>
+                {% for r in restaurants %}
+                  <option value="{{ r.restaurant_id }}">#{{ r.restaurant_id }} — {{ r.name }}</option>
+                {% endfor %}
+              </select>
             </label>
 
-            <label>Delivery instructions
-              <input name="delivery_instructions" placeholder="Leave at reception" />
-            </label>
+            <label>Instructions <input name="delivery_instructions"></label>
 
             <div class="orderbox">
               <div class="orderbox-head">
                 <div>
                   <div class="orderbox-title">Items</div>
-                  <div class="orderbox-sub">Select from the restaurant menu</div>
+                  <div class="orderbox-sub">Use Menu Item IDs from right side list</div>
                 </div>
                 <button class="btn tiny" id="addItemBtn" type="button">+ Add item</button>
               </div>
 
-              <div id="orderItemsWrap"></div>
+              <div id="orderItemsWrap">
+                <div class="item-row">
+                  <label>Menu Item ID <input name="menu_item_id[]" type="number" required></label>
+                  <label>Qty <input name="quantity[]" type="number" min="1" value="1" required></label>
+                  <button type="button" class="remove">Remove</button>
+                </div>
+              </div>
             </div>
 
             <button class="btn primary" type="submit">Place order</button>
-            <pre class="out" id="orderOut"></pre>
           </form>
 
           <div class="divider"></div>
 
-          <div class="panel-title">Track Order</div>
-          <form id="trackForm" class="form">
+          <div class="panel-title">Track / Update Order</div>
+          <form class="form" method="post" action="{{ url_for('track_order') }}">
             <div class="row">
-              <label>Order ID
-                <input name="order_id" type="number" placeholder="1" required />
-              </label>
-              <label>Status update (optional)
+              <label>Order ID <input name="order_id" type="number" required></label>
+              <label>Status
                 <select name="status">
                   <option value="">—</option>
                   <option>Accepted</option>
@@ -242,46 +206,65 @@
               </label>
             </div>
             <div class="row">
-              <button class="btn" type="submit">Fetch order</button>
-              <button class="btn warn" id="updateStatusBtn" type="button">Update status</button>
+              <button class="btn" type="submit">Track</button>
+              <button class="btn warn" type="submit" formaction="{{ url_for('update_order_status') }}">
+                Update status
+              </button>
             </div>
-            <pre class="out" id="trackOut"></pre>
           </form>
+
+          {% if tracked %}
+          <div class="divider"></div>
+          <div class="card subtle">
+            <div class="card-title">Tracked Order #{{ tracked["order"].order_id }}</div>
+            <div class="card-sub">
+              Status: <b>{{ tracked["order"].status }}</b> • Total: <b>PKR {{ tracked["total"] }}</b>
+            </div>
+
+            <div class="list" style="margin-top:10px">
+              {% for it in tracked["items"] %}
+              <div class="rowcard">
+                <div>
+                  <div class="title">#{{ it.menu_item_id }} — {{ it.menu_item.name }}</div>
+                  <div class="meta">Qty {{ it.quantity }} • Price {{ money_str(it.price_at_purchase) }}</div>
+                </div>
+                <div class="tag">OK</div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
         </div>
+        {% endif %}
 
         <!-- DELIVERY -->
-        <div class="panel" id="tab-delivery">
-          <div class="panel-title">Assign Delivery Agent</div>
-          <form id="deliveryForm" class="form">
+        {% if tab == 'delivery' %}
+        <div class="panel active">
+          <div class="panel-title">Assign Delivery</div>
+          <form class="form" method="post" action="{{ url_for('assign_delivery') }}">
             <div class="row">
-              <label>Order ID
-                <input name="order_id" type="number" placeholder="1" required />
-              </label>
-              <label>Delivery Agent ID
-                <input name="delivery_agent_id" type="number" placeholder="Create a user with type Delivery Agent" required />
-              </label>
+              <label>Order ID <input name="order_id" type="number" required></label>
+              <label>Agent ID <input name="delivery_agent_id" type="number" required></label>
             </div>
-            <label>Expected drop time (optional)
-              <input name="expected_drop_at" placeholder="2026-01-02 12:30:00" />
+            <label>Expected drop (YYYY-MM-DD HH:MM:SS)
+              <input name="expected_drop_at" placeholder="2026-01-02 12:30:00">
             </label>
-
             <button class="btn primary" type="submit">Assign</button>
-            <pre class="out" id="deliveryOut"></pre>
           </form>
         </div>
+        {% endif %}
 
         <!-- REVIEWS -->
-        <div class="panel" id="tab-reviews">
+        {% if tab == 'reviews' %}
+        <div class="panel active">
           <div class="panel-title">Create Review</div>
-          <form id="reviewForm" class="form">
+          <form class="form" method="post" action="{{ url_for('create_review') }}" id="reviewForm">
             <div class="row">
-              <label>Reviewer (Customer ID)
-                <input name="reviewer_id" type="number" placeholder="1" required />
-              </label>
-              <label>Rating (1–5)
-                <input name="rating" type="number" min="1" max="5" placeholder="5" required />
-              </label>
+              <label>Reviewer ID <input name="reviewer_id" type="number" required></label>
+              <label>Rating (1–5) <input name="rating" type="number" min="1" max="5" required></label>
             </div>
+
+            <input type="hidden" name="target_type" id="target_type" value="restaurant">
 
             <div class="segmented">
               <button type="button" class="seg active" data-target="restaurant">Restaurant</button>
@@ -289,72 +272,63 @@
             </div>
 
             <div class="row" id="reviewRestaurantRow">
-              <label>Restaurant ID
-                <input name="restaurant_id" type="number" placeholder="1" />
-              </label>
-              <label class="muted">Target
-                <input value="Restaurant" disabled />
-              </label>
+              <label>Restaurant ID <input name="restaurant_id" type="number"></label>
+              <label class="muted">Target <input value="Restaurant" disabled></label>
             </div>
 
             <div class="row hidden" id="reviewAgentRow">
-              <label>Delivery Agent ID
-                <input name="delivery_agent_id" type="number" placeholder="2" />
-              </label>
-              <label class="muted">Target
-                <input value="Delivery Agent" disabled />
-              </label>
+              <label>Agent ID <input name="delivery_agent_id" type="number"></label>
+              <label class="muted">Target <input value="Delivery Agent" disabled></label>
             </div>
 
-            <label>Comment (optional)
-              <textarea name="comment" rows="3" placeholder="Fast delivery, hot food, great packaging."></textarea>
-            </label>
-
-            <button class="btn primary" type="submit">Submit review</button>
-            <pre class="out" id="reviewOut"></pre>
+            <label>Comment <textarea name="comment" rows="3"></textarea></label>
+            <button class="btn primary" type="submit">Submit</button>
           </form>
         </div>
+        {% endif %}
       </div>
 
-      <!-- RIGHT: Live data -->
+      <!-- RIGHT SIDE LISTS -->
       <div class="col">
         <div class="card">
-          <div class="card-head">
-            <div>
-              <div class="card-title">Live Data</div>
-              <div class="card-sub">Pulled from your Flask API</div>
-            </div>
-            <span class="badge soft" id="countsBadge">—</span>
-          </div>
-
-          <div class="split">
-            <div class="mini">
-              <div class="mini-title">Users</div>
-              <div class="mini-body" id="usersList"></div>
-            </div>
-            <div class="mini">
-              <div class="mini-title">Restaurants</div>
-              <div class="mini-body" id="restaurantsList"></div>
-            </div>
+          <div class="card-title">Users</div>
+          <div class="mini-body">
+            {% for u in users[:12] %}
+              <div><b>#{{ u.user_id }}</b> {{ u.full_name }} <span style="opacity:.8">({{ u.type }})</span></div>
+            {% endfor %}
           </div>
         </div>
 
-        <div class="card subtle">
-          <div class="card-title">Design notes</div>
-          <ul class="bullets">
-            <li><b>OrderItems</b> stores <b>price_at_purchase</b> so totals remain accurate after menu price changes.</li>
-            <li><b>Reviews</b> is polymorphic: review a restaurant OR an agent (exactly one FK set).</li>
-            <li>Role integrity is enforced via triggers (e.g., only Customers can place orders).</li>
-          </ul>
+        <div class="card subtle" style="margin-top:14px">
+          <div class="card-title">Restaurants</div>
+          <div class="mini-body">
+            {% for r in restaurants[:12] %}
+              <div><b>#{{ r.restaurant_id }}</b> {{ r.name }} <span style="opacity:.8">({{ r.status }})</span></div>
+            {% endfor %}
+          </div>
         </div>
+
+        <div class="card subtle" style="margin-top:14px">
+          <div class="card-title">Menu Items (Use IDs for Orders)</div>
+          <div class="list">
+            {% for m in menu_items[:20] %}
+              <div class="rowcard">
+                <div>
+                  <div class="title">#{{ m.menu_id }} — {{ m.name }}</div>
+                  <div class="meta">Restaurant #{{ m.restaurant_id }} • {{ m.category or "—" }} • {{ "Available" if m.availability else "Unavailable" }}</div>
+                </div>
+                <div class="tag">PKR {{ money_str(m.price) }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
       </div>
     </section>
 
-    <footer class="footer">
-      Flask + MySQL Workbench schema • Modern UI demo
-    </footer>
+    <footer class="footer">Local project • No API calls • Flask + MySQL</footer>
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

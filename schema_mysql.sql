@@ -1,10 +1,9 @@
 CREATE DATABASE IF NOT EXISTS food_aggregator
   CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
+  COLLATE utf8mb4_general_ci;
 
 USE food_aggregator;
 
--- USERS
 CREATE TABLE IF NOT EXISTS users (
   user_id       INT AUTO_INCREMENT PRIMARY KEY,
   full_name     VARCHAR(120) NOT NULL,
@@ -15,7 +14,6 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- RESTAURANTS
 CREATE TABLE IF NOT EXISTS restaurants (
   restaurant_id INT AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(140) NOT NULL,
@@ -24,7 +22,6 @@ CREATE TABLE IF NOT EXISTS restaurants (
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- MENU ITEMS
 CREATE TABLE IF NOT EXISTS menu_items (
   menu_id       INT AUTO_INCREMENT PRIMARY KEY,
   restaurant_id INT NOT NULL,
@@ -36,12 +33,9 @@ CREATE TABLE IF NOT EXISTS menu_items (
   CONSTRAINT fk_menu_restaurant
     FOREIGN KEY (restaurant_id) REFERENCES restaurants(restaurant_id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
-  INDEX idx_menu_restaurant (restaurant_id),
-  CONSTRAINT chk_menu_price CHECK (price >= 0),
-  CONSTRAINT chk_menu_availability CHECK (availability IN (0,1))
+  INDEX idx_menu_restaurant (restaurant_id)
 ) ENGINE=InnoDB;
 
--- ORDERS
 CREATE TABLE IF NOT EXISTS orders (
   order_id              INT AUTO_INCREMENT PRIMARY KEY,
   user_id               INT NOT NULL,
@@ -70,7 +64,6 @@ CREATE TABLE IF NOT EXISTS orders (
   INDEX idx_orders_restaurant (restaurant_id)
 ) ENGINE=InnoDB;
 
--- ORDER ITEMS (captures price at purchase)
 CREATE TABLE IF NOT EXISTS order_items (
   orderitem_id      INT AUTO_INCREMENT PRIMARY KEY,
   order_id          INT NOT NULL,
@@ -86,12 +79,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
 
-  INDEX idx_orderitems_order (order_id),
-  CONSTRAINT chk_orderitems_qty CHECK (quantity > 0),
-  CONSTRAINT chk_orderitems_price CHECK (price_at_purchase >= 0)
+  INDEX idx_orderitems_order (order_id)
 ) ENGINE=InnoDB;
 
--- DELIVERY ASSIGNMENTS (1:1 per order via UNIQUE)
 CREATE TABLE IF NOT EXISTS delivery_assignments (
   delivery_id       INT AUTO_INCREMENT PRIMARY KEY,
   order_id          INT NOT NULL UNIQUE,
@@ -114,7 +104,6 @@ CREATE TABLE IF NOT EXISTS delivery_assignments (
   INDEX idx_delivery_agent (delivery_agent_id)
 ) ENGINE=InnoDB;
 
--- REVIEWS (polymorphic: exactly one target set)
 CREATE TABLE IF NOT EXISTS reviews (
   review_id         INT AUTO_INCREMENT PRIMARY KEY,
   reviewer_id       INT NOT NULL,
@@ -134,17 +123,9 @@ CREATE TABLE IF NOT EXISTS reviews (
 
   CONSTRAINT fk_reviews_agent
     FOREIGN KEY (delivery_agent_id) REFERENCES users(user_id)
-    ON DELETE SET NULL ON UPDATE CASCADE,
-
-  CONSTRAINT chk_reviews_rating CHECK (rating BETWEEN 1 AND 5),
-  CONSTRAINT chk_reviews_polymorphic CHECK (
-    (restaurant_id IS NOT NULL AND delivery_agent_id IS NULL)
-    OR
-    (restaurant_id IS NULL AND delivery_agent_id IS NOT NULL)
-  )
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
--- VIEW: order totals from captured purchase prices
 CREATE OR REPLACE VIEW v_order_totals AS
 SELECT
   o.order_id,
@@ -157,9 +138,9 @@ FROM orders o
 LEFT JOIN order_items oi ON oi.order_id = o.order_id
 GROUP BY o.order_id;
 
--- TRIGGERS: enforce role integrity
 DELIMITER $$
 
+DROP TRIGGER IF EXISTS trg_orders_user_must_be_customer $$
 CREATE TRIGGER trg_orders_user_must_be_customer
 BEFORE INSERT ON orders
 FOR EACH ROW
@@ -167,8 +148,9 @@ BEGIN
   IF (SELECT type FROM users WHERE user_id = NEW.user_id) <> 'Customer' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Only Customers can place orders';
   END IF;
-END$$
+END $$
 
+DROP TRIGGER IF EXISTS trg_delivery_agent_must_be_agent $$
 CREATE TRIGGER trg_delivery_agent_must_be_agent
 BEFORE INSERT ON delivery_assignments
 FOR EACH ROW
@@ -176,17 +158,27 @@ BEGIN
   IF (SELECT type FROM users WHERE user_id = NEW.delivery_agent_id) <> 'Delivery Agent' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'delivery_agent_id must be a Delivery Agent';
   END IF;
-END$$
+END $$
 
-CREATE TRIGGER trg_review_agent_target_must_be_agent
+DROP TRIGGER IF EXISTS trg_reviews_polymorphic_exactly_one_target $$
+CREATE TRIGGER trg_reviews_polymorphic_exactly_one_target
 BEFORE INSERT ON reviews
 FOR EACH ROW
 BEGIN
+  IF (NEW.restaurant_id IS NULL AND NEW.delivery_agent_id IS NULL)
+     OR (NEW.restaurant_id IS NOT NULL AND NEW.delivery_agent_id IS NOT NULL) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Review must target exactly one: restaurant_id OR delivery_agent_id';
+  END IF;
+
+  IF NEW.rating < 1 OR NEW.rating > 5 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'rating must be between 1 and 5';
+  END IF;
+
   IF NEW.delivery_agent_id IS NOT NULL THEN
     IF (SELECT type FROM users WHERE user_id = NEW.delivery_agent_id) <> 'Delivery Agent' THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Review target must be a Delivery Agent';
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Review target delivery_agent_id must be a Delivery Agent';
     END IF;
   END IF;
-END$$
+END $$
 
 DELIMITER ;

@@ -1,0 +1,9 @@
+{
+    "name": "Food Aggregator Offline",
+    "short_name": "FoodAgg",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#070A12",
+    "theme_color": "#7C5CFF",
+    "icons": []
+  }

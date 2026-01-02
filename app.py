@@ -1,443 +1,416 @@
-import os
 from decimal import Decimal
 from datetime import datetime
 
-from flask import Flask, jsonify, request, render_template
-from flask_cors import CORS
-import mysql.connector
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
+
+app = Flask(__name__)
+app.secret_key = "food-aggregator-secret"
+app.url_map.strict_slashes = False
+
+# XAMPP MySQL: user=root, password="" (empty)
+# If you have a password: mysql+pymysql://root:YOURPASS@127.0.0.1:3306/food_aggregator
+app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+pymysql://root:@127.0.0.1:3306/food_aggregator"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+
+# -------------------- MODELS --------------------
+class User(db.Model):
+    __tablename__ = "users"
+    user_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    full_name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    phone_number = db.Column(db.String(30), unique=True, nullable=False)
+    type = db.Column(db.String(50), nullable=False)  # Admin / Customer / Delivery Agent
+    address = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
 
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-CORS(app)
+class Restaurant(db.Model):
+    __tablename__ = "restaurants"
+    restaurant_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(140), nullable=False)
+    address = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="Active")
+    created_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
 
 
-DB_CONFIG = {
-    "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
-    "port": int(os.getenv("MYSQL_PORT", "3306")),
-    "user": os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASSWORD", ""),
-    "database": os.getenv("MYSQL_DB", "food_aggregator"),
-}
+class MenuItem(db.Model):
+    __tablename__ = "menu_items"
+    menu_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.restaurant_id"), nullable=False)
+    name = db.Column(db.String(160), nullable=False)
+    price = db.Column(db.Numeric(10, 2), nullable=False)
+    category = db.Column(db.String(20), nullable=True)  # Food / Drink
+    availability = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
+
+    restaurant = db.relationship("Restaurant", backref=db.backref("menu_items", lazy=True))
 
 
-def get_conn():
-    return mysql.connector.connect(**DB_CONFIG)
+class Order(db.Model):
+    __tablename__ = "orders"
+    order_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.restaurant_id"), nullable=False)
+
+    status = db.Column(db.String(30), nullable=False, default="Placed")
+    payment_method = db.Column(db.String(20), nullable=False)  # COD / Online
+    delivery_instructions = db.Column(db.String(255), nullable=True)
+
+    placed_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
+    accepted_at = db.Column(db.DateTime, nullable=True)
+    preparing_at = db.Column(db.DateTime, nullable=True)
+    out_for_delivery_at = db.Column(db.DateTime, nullable=True)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    cancelled_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship("User", backref=db.backref("orders", lazy=True))
+    restaurant = db.relationship("Restaurant", backref=db.backref("orders", lazy=True))
 
 
-def to_jsonable(value):
-    if isinstance(value, Decimal):
-        return format(value, "f")  # keep as string for exactness in JSON
-    if isinstance(value, (datetime, )):
-        return value.isoformat()
-    return value
+class OrderItem(db.Model):
+    __tablename__ = "order_items"
+    orderitem_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.order_id"), nullable=False)
+    menu_item_id = db.Column(db.Integer, db.ForeignKey("menu_items.menu_id"), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    price_at_purchase = db.Column(db.Numeric(10, 2), nullable=False)  # capture at order time
+
+    order = db.relationship("Order", backref=db.backref("items", lazy=True, cascade="all, delete-orphan"))
+    menu_item = db.relationship("MenuItem")
 
 
-def json_row(row: dict):
-    return {k: to_jsonable(v) for k, v in row.items()}
+class DeliveryAssignment(db.Model):
+    __tablename__ = "delivery_assignments"
+    delivery_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.order_id"), nullable=False, unique=True)
+    delivery_agent_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
+
+    status = db.Column(db.String(20), nullable=False, default="Assigned")
+
+    assigned_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
+    pickup_at = db.Column(db.DateTime, nullable=True)
+    dropped_at = db.Column(db.DateTime, nullable=True)
+    expected_drop_at = db.Column(db.DateTime, nullable=True)
+
+    order = db.relationship("Order", backref=db.backref("delivery", uselist=False))
+    agent = db.relationship("User")
 
 
-@app.get("/")
-def home():
-    return render_template("index.html")
+class Review(db.Model):
+    __tablename__ = "reviews"
+    review_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.restaurant_id"), nullable=True)
+    delivery_agent_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
 
 
-@app.get("/api/health")
-def health():
-    return jsonify({"ok": True})
-
-
-# -------------------------
-# Users
-# -------------------------
-@app.post("/api/users")
-def create_user():
-    body = request.get_json(force=True, silent=True) or {}
-    full_name = body.get("full_name")
-    email = body.get("email")
-    phone_number = body.get("phone_number")
-    user_type = body.get("type")
-    address = body.get("address")
-
-    if not full_name or not email or not phone_number or not user_type:
-        return jsonify({"error": "full_name, email, phone_number, type are required"}), 400
-
-    conn = get_conn()
+# -------------------- HELPERS --------------------
+def money_str(x) -> str:
+    if x is None:
+        return "0.00"
+    if isinstance(x, Decimal):
+        return f"{x:.2f}"
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO users (full_name, email, phone_number, type, address)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (full_name, email, phone_number, user_type, address),
-        )
-        conn.commit()
-        return jsonify({"user_id": cur.lastrowid}), 201
-    except mysql.connector.Error as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
-
-
-@app.get("/api/users")
-def list_users():
-    conn = get_conn()
-    try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT * FROM users ORDER BY user_id DESC")
-        rows = [json_row(r) for r in cur.fetchall()]
-        return jsonify(rows)
-    finally:
-        conn.close()
-
-
-# -------------------------
-# Restaurants
-# -------------------------
-@app.post("/api/restaurants")
-def create_restaurant():
-    body = request.get_json(force=True, silent=True) or {}
-    name = body.get("name")
-    address = body.get("address")
-    status = body.get("status", "Active")
-
-    if not name or not address:
-        return jsonify({"error": "name and address are required"}), 400
-
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO restaurants (name, address, status) VALUES (%s, %s, %s)",
-            (name, address, status),
-        )
-        conn.commit()
-        return jsonify({"restaurant_id": cur.lastrowid}), 201
-    except mysql.connector.Error as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
-
-
-@app.get("/api/restaurants")
-def list_restaurants():
-    conn = get_conn()
-    try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT * FROM restaurants ORDER BY restaurant_id DESC")
-        rows = [json_row(r) for r in cur.fetchall()]
-        return jsonify(rows)
-    finally:
-        conn.close()
-
-
-# -------------------------
-# Menu items
-# -------------------------
-@app.post("/api/menu-items")
-def create_menu_item():
-    body = request.get_json(force=True, silent=True) or {}
-    restaurant_id = body.get("restaurant_id")
-    name = body.get("name")
-    price = body.get("price")
-    category = body.get("category")
-    availability = body.get("availability", 1)
-
-    if not restaurant_id or not name or price is None:
-        return jsonify({"error": "restaurant_id, name, price are required"}), 400
-
-    try:
-        price_dec = Decimal(str(price)).quantize(Decimal("0.01"))
+        return f"{Decimal(str(x)):.2f}"
     except Exception:
-        return jsonify({"error": "Invalid price"}), 400
+        return str(x)
 
-    conn = get_conn()
+
+def calc_total(order: Order) -> str:
+    total = Decimal("0.00")
+    for it in order.items:
+        total += Decimal(str(it.price_at_purchase)) * Decimal(str(it.quantity))
+    return money_str(total)
+
+
+# -------------------- ROUTES --------------------
+@app.route("/")
+def index():
+    tab = request.args.get("tab", "users")
+    track_order_id = request.args.get("track_order_id")
+
+    users = User.query.order_by(User.user_id.desc()).all()
+    restaurants = Restaurant.query.order_by(Restaurant.restaurant_id.desc()).all()
+    menu_items = MenuItem.query.order_by(MenuItem.menu_id.desc()).all()
+
+    tracked = None
+    if track_order_id:
+        try:
+            oid = int(track_order_id)
+            order = Order.query.get(oid)
+            if order:
+                tracked = {
+                    "order": order,
+                    "items": order.items,
+                    "total": calc_total(order),
+                    "delivery": order.delivery,
+                }
+            else:
+                flash("Order not found.", "error")
+        except Exception:
+            flash("Invalid order id.", "error")
+
+    return render_template(
+        "index.html",
+        tab=tab,
+        users=users,
+        restaurants=restaurants,
+        menu_items=menu_items,
+        tracked=tracked,
+        money_str=money_str,
+    )
+
+
+@app.route("/actions/create_user", methods=["POST"])
+def create_user():
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO menu_items (restaurant_id, name, price, category, availability)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (int(restaurant_id), name, price_dec, category, 1 if availability else 0),
+        u = User(
+            full_name=request.form["full_name"].strip(),
+            email=request.form["email"].strip(),
+            phone_number=request.form["phone_number"].strip(),
+            type=request.form["type"].strip(),
+            address=(request.form.get("address") or "").strip() or None,
         )
-        conn.commit()
-        return jsonify({"menu_id": cur.lastrowid}), 201
-    except mysql.connector.Error as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
+        db.session.add(u)
+        db.session.commit()
+        flash(f"User created (ID: {u.user_id})", "ok")
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+    return redirect(url_for("index", tab="users"))
 
 
-@app.get("/api/restaurants/<int:restaurant_id>/menu")
-def get_menu(restaurant_id: int):
-    conn = get_conn()
+@app.route("/actions/create_restaurant", methods=["POST"])
+def create_restaurant():
     try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute(
-            """
-            SELECT menu_id, restaurant_id, name, price, category, availability
-            FROM menu_items
-            WHERE restaurant_id = %s
-            ORDER BY menu_id DESC
-            """,
-            (restaurant_id,),
+        r = Restaurant(
+            name=request.form["name"].strip(),
+            address=request.form["address"].strip(),
+            status=request.form.get("status", "Active").strip(),
         )
-        rows = [json_row(r) for r in cur.fetchall()]
-        return jsonify(rows)
-    finally:
-        conn.close()
+        db.session.add(r)
+        db.session.commit()
+        flash(f"Restaurant created (ID: {r.restaurant_id})", "ok")
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+    return redirect(url_for("index", tab="restaurants"))
 
 
-# -------------------------
-# Orders
-# -------------------------
-@app.post("/api/orders")
+@app.route("/actions/create_menu_item", methods=["POST"])
+def create_menu_item():
+    try:
+        price = Decimal(request.form["price"]).quantize(Decimal("0.01"))
+        mi = MenuItem(
+            restaurant_id=int(request.form["restaurant_id"]),
+            name=request.form["name"].strip(),
+            price=price,
+            category=request.form.get("category") or None,
+            availability=True if request.form.get("availability") == "on" else False,
+        )
+        db.session.add(mi)
+        db.session.commit()
+        flash(f"Menu item added (ID: {mi.menu_id})", "ok")
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+    return redirect(url_for("index", tab="menu"))
+
+
+@app.route("/actions/place_order", methods=["POST"])
 def place_order():
-    body = request.get_json(force=True, silent=True) or {}
-    user_id = body.get("user_id")
-    restaurant_id = body.get("restaurant_id")
-    payment_method = body.get("payment_method")
-    delivery_instructions = body.get("delivery_instructions")
-    items = body.get("items", [])
-
-    if not user_id or not restaurant_id or not payment_method or not isinstance(items, list) or len(items) == 0:
-        return jsonify({"error": "user_id, restaurant_id, payment_method, items[] required"}), 400
-
-    conn = get_conn()
     try:
-        conn.start_transaction()
-        cur = conn.cursor()
+        user_id = int(request.form["user_id"])
+        restaurant_id = int(request.form["restaurant_id"])
 
-        # Create order (trigger enforces user is Customer)
-        cur.execute(
-            """
-            INSERT INTO orders (user_id, restaurant_id, payment_method, delivery_instructions, status)
-            VALUES (%s, %s, %s, %s, 'Placed')
-            """,
-            (int(user_id), int(restaurant_id), payment_method, delivery_instructions),
+        user = User.query.get(user_id)
+        if not user or user.type != "Customer":
+            raise ValueError("Only Customer users can place orders.")
+
+        order = Order(
+            user_id=user_id,
+            restaurant_id=restaurant_id,
+            payment_method=request.form["payment_method"],
+            delivery_instructions=(request.form.get("delivery_instructions") or "").strip() or None,
+            status="Placed",
         )
-        order_id = cur.lastrowid
+        db.session.add(order)
+        db.session.flush()
 
-        # Insert items with price captured at purchase time
-        get_menu = conn.cursor(dictionary=True)
-        insert_item = conn.cursor()
+        menu_ids = request.form.getlist("menu_item_id[]")
+        qtys = request.form.getlist("quantity[]")
 
-        for it in items:
-            menu_item_id = it.get("menu_item_id")
-            quantity = it.get("quantity")
+        added = 0
+        for mid, q in zip(menu_ids, qtys):
+            if not str(mid).strip():
+                continue
+            menu_item_id = int(mid)
+            quantity = int(q)
+            if quantity <= 0:
+                raise ValueError("Quantity must be > 0")
 
-            if not menu_item_id or not isinstance(quantity, int) or quantity <= 0:
-                raise ValueError("Each item must have menu_item_id and integer quantity > 0")
-
-            get_menu.execute(
-                """
-                SELECT menu_id, restaurant_id, price, availability
-                FROM menu_items
-                WHERE menu_id = %s
-                """,
-                (int(menu_item_id),),
-            )
-            menu = get_menu.fetchone()
-            if not menu:
+            mi = MenuItem.query.get(menu_item_id)
+            if not mi:
                 raise ValueError(f"Menu item not found: {menu_item_id}")
-            if int(menu["restaurant_id"]) != int(restaurant_id):
-                raise ValueError(f"Menu item {menu_item_id} does not belong to restaurant {restaurant_id}")
-            if int(menu["availability"]) != 1:
-                raise ValueError(f"Menu item {menu_item_id} is unavailable")
+            if mi.restaurant_id != restaurant_id:
+                raise ValueError("Menu item does not belong to this restaurant.")
+            if not mi.availability:
+                raise ValueError("Menu item is unavailable.")
 
-            insert_item.execute(
-                """
-                INSERT INTO order_items (order_id, menu_item_id, quantity, price_at_purchase)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (order_id, int(menu_item_id), int(quantity), menu["price"]),
-            )
+            db.session.add(OrderItem(
+                order_id=order.order_id,
+                menu_item_id=mi.menu_id,
+                quantity=quantity,
+                price_at_purchase=mi.price,
+            ))
+            added += 1
 
-        conn.commit()
-        return jsonify({"order_id": order_id}), 201
+        if added == 0:
+            raise ValueError("Add at least one item to place an order.")
 
-    except (mysql.connector.Error, ValueError) as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
+        db.session.commit()
+        flash(f"Order placed (Order ID: {order.order_id})", "ok")
+        return redirect(url_for("index", tab="orders", track_order_id=order.order_id))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(url_for("index", tab="orders"))
 
 
-@app.get("/api/orders/<int:order_id>")
-def get_order(order_id: int):
-    conn = get_conn()
+@app.route("/actions/track_order", methods=["POST"])
+def track_order():
     try:
-        cur = conn.cursor(dictionary=True)
+        oid = int(request.form["order_id"])
+        return redirect(url_for("index", tab="orders", track_order_id=oid))
+    except Exception:
+        flash("Invalid order id.", "error")
+        return redirect(url_for("index", tab="orders"))
 
-        cur.execute("SELECT * FROM orders WHERE order_id = %s", (order_id,))
-        order = cur.fetchone()
+
+@app.route("/actions/update_order_status", methods=["POST"])
+def update_order_status():
+    try:
+        oid = int(request.form["order_id"])
+        status = request.form["status"].strip()
+
+        ts_map = {
+            "Accepted": "accepted_at",
+            "Preparing": "preparing_at",
+            "Out for Delivery": "out_for_delivery_at",
+            "Delivered": "delivered_at",
+            "Cancelled": "cancelled_at",
+        }
+
+        order = Order.query.get(oid)
         if not order:
-            return jsonify({"error": "Order not found"}), 404
+            raise ValueError("Order not found.")
 
-        cur.execute(
-            """
-            SELECT
-              oi.orderitem_id,
-              oi.menu_item_id,
-              mi.name AS menu_name,
-              oi.quantity,
-              oi.price_at_purchase,
-              (oi.quantity * oi.price_at_purchase) AS line_total
-            FROM order_items oi
-            JOIN menu_items mi ON mi.menu_id = oi.menu_item_id
-            WHERE oi.order_id = %s
-            ORDER BY oi.orderitem_id ASC
-            """,
-            (order_id,),
-        )
-        items = [json_row(r) for r in cur.fetchall()]
+        order.status = status
+        if status in ts_map:
+            setattr(order, ts_map[status], datetime.utcnow())
 
-        cur.execute("SELECT total FROM v_order_totals WHERE order_id = %s", (order_id,))
-        total_row = cur.fetchone()
-        total = total_row["total"] if total_row else Decimal("0.00")
+        db.session.commit()
+        flash("Order status updated.", "ok")
+        return redirect(url_for("index", tab="orders", track_order_id=oid))
 
-        cur.execute("SELECT * FROM delivery_assignments WHERE order_id = %s", (order_id,))
-        delivery = cur.fetchone()
-
-        return jsonify({
-            "order": json_row(order),
-            "items": items,
-            "total": to_jsonable(total),
-            "delivery": json_row(delivery) if delivery else None
-        })
-    finally:
-        conn.close()
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(url_for("index", tab="orders"))
 
 
-@app.post("/api/orders/<int:order_id>/status")
-def update_order_status(order_id: int):
-    body = request.get_json(force=True, silent=True) or {}
-    status = body.get("status")
-    if not status:
-        return jsonify({"error": "status required"}), 400
-
-    # Map status -> timestamp column
-    fields = {
-        "Accepted": "accepted_at",
-        "Preparing": "preparing_at",
-        "Out for Delivery": "out_for_delivery_at",
-        "Delivered": "delivered_at",
-        "Cancelled": "cancelled_at",
-    }
-
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT order_id FROM orders WHERE order_id = %s", (order_id,))
-        if not cur.fetchone():
-            return jsonify({"error": "Order not found"}), 404
-
-        ts_field = fields.get(status)
-        if ts_field:
-            cur.execute(
-                f"UPDATE orders SET status = %s, {ts_field} = NOW() WHERE order_id = %s",
-                (status, order_id),
-            )
-        else:
-            cur.execute(
-                "UPDATE orders SET status = %s WHERE order_id = %s",
-                (status, order_id),
-            )
-
-        conn.commit()
-        return jsonify({"ok": True})
-    except mysql.connector.Error as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
-
-
-# -------------------------
-# Delivery assignment
-# -------------------------
-@app.post("/api/deliveries/assign")
+@app.route("/actions/assign_delivery", methods=["POST"])
 def assign_delivery():
-    body = request.get_json(force=True, silent=True) or {}
-    order_id = body.get("order_id")
-    delivery_agent_id = body.get("delivery_agent_id")
-    expected_drop_at = body.get("expected_drop_at")  # optional ISO-like string
-
-    if not order_id or not delivery_agent_id:
-        return jsonify({"error": "order_id and delivery_agent_id required"}), 400
-
-    conn = get_conn()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO delivery_assignments (order_id, delivery_agent_id, status, expected_drop_at)
-            VALUES (%s, %s, 'Assigned', %s)
-            """,
-            (int(order_id), int(delivery_agent_id), expected_drop_at),
-        )
-        conn.commit()
-        return jsonify({"delivery_id": cur.lastrowid}), 201
-    except mysql.connector.Error as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
+        oid = int(request.form["order_id"])
+        aid = int(request.form["delivery_agent_id"])
+        exp_raw = (request.form.get("expected_drop_at") or "").strip()
+
+        agent = User.query.get(aid)
+        if not agent or agent.type != "Delivery Agent":
+            raise ValueError("delivery_agent_id must be a Delivery Agent user.")
+
+        exp_dt = None
+        if exp_raw:
+            exp_dt = datetime.strptime(exp_raw, "%Y-%m-%d %H:%M:%S")
+
+        da = DeliveryAssignment(order_id=oid, delivery_agent_id=aid, status="Assigned", expected_drop_at=exp_dt)
+        db.session.add(da)
+        db.session.commit()
+        flash(f"Delivery assigned (Delivery ID: {da.delivery_id})", "ok")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+
+    return redirect(url_for("index", tab="delivery"))
 
 
-# -------------------------
-# Reviews
-# -------------------------
-@app.post("/api/reviews")
+@app.route("/actions/create_review", methods=["POST"])
 def create_review():
-    body = request.get_json(force=True, silent=True) or {}
-    reviewer_id = body.get("reviewer_id")
-    restaurant_id = body.get("restaurant_id")
-    delivery_agent_id = body.get("delivery_agent_id")
-    rating = body.get("rating")
-    comment = body.get("comment")
-
-    if not reviewer_id or rating is None:
-        return jsonify({"error": "reviewer_id and rating required"}), 400
-
-    conn = get_conn()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO reviews (reviewer_id, restaurant_id, delivery_agent_id, rating, comment)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (int(reviewer_id),
-             int(restaurant_id) if restaurant_id else None,
-             int(delivery_agent_id) if delivery_agent_id else None,
-             int(rating),
-             comment),
+        reviewer_id = int(request.form["reviewer_id"])
+        rating = int(request.form["rating"])
+        if rating < 1 or rating > 5:
+            raise ValueError("Rating must be between 1 and 5.")
+
+        target_type = request.form.get("target_type", "restaurant")
+        restaurant_id = request.form.get("restaurant_id")
+        delivery_agent_id = request.form.get("delivery_agent_id")
+
+        rest_id = None
+        agent_id = None
+        if target_type == "restaurant":
+            if not restaurant_id:
+                raise ValueError("Provide restaurant_id for restaurant review.")
+            rest_id = int(restaurant_id)
+        else:
+            if not delivery_agent_id:
+                raise ValueError("Provide delivery_agent_id for agent review.")
+            agent_id = int(delivery_agent_id)
+            agent = User.query.get(agent_id)
+            if not agent or agent.type != "Delivery Agent":
+                raise ValueError("delivery_agent_id must be a Delivery Agent user.")
+
+        rv = Review(
+            reviewer_id=reviewer_id,
+            restaurant_id=rest_id,
+            delivery_agent_id=agent_id,
+            rating=rating,
+            comment=(request.form.get("comment") or "").strip() or None,
         )
-        conn.commit()
-        return jsonify({"review_id": cur.lastrowid}), 201
-    except mysql.connector.Error as e:
-        conn.rollback()
-        return jsonify({"error": str(e)}), 400
-    finally:
-        conn.close()
+        db.session.add(rv)
+        db.session.commit()
+        flash(f"Review submitted (Review ID: {rv.review_id})", "ok")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+
+    return redirect(url_for("index", tab="reviews"))
 
 
-@app.get("/api/reviews")
-def list_reviews():
-    conn = get_conn()
+@app.route("/test")
+def test():
     try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT * FROM reviews ORDER BY review_id DESC")
-        return jsonify([json_row(r) for r in cur.fetchall()])
-    finally:
-        conn.close()
+        db.session.execute(db.text("SELECT 1"))
+        return "DB Connected"
+    except Exception as e:
+        return f"DB NOT Connected: {e}"
 
 
+# -------------------- RUN --------------------
 if __name__ == "__main__":
-    # Flask dev server
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    with app.app_context():
+        db.create_all()
+        print("DB init OK (tables ensured).")
+
+    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False)

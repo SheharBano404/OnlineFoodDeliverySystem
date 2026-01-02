@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Cart</h1>
+
+{% if not rest %}
+  <div class="card subtle">
+    <div class="card-title">Empty</div>
+    <p class="muted">Add items from a restaurant menu.</p>
+    <a class="btn primary" href="{{ url_for('customer_restaurants') }}">Browse Restaurants</a>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="card-title">Restaurant: {{ rest.name }}</div>
+
+    <form method="post" action="{{ url_for('customer_cart_update') }}">
+      <div class="table">
+        <div class="tr head">
+          <div>Item</div><div>Price</div><div>Qty</div><div>Line</div>
+        </div>
+        {% for mi, qty, line_total in lines %}
+        <div class="tr">
+          <div>{{ mi.name }}</div>
+          <div>PKR {{ money_str(mi.price) }}</div>
+          <div><input name="qty_{{ mi.menu_id }}" type="number" min="0" value="{{ qty }}"></div>
+          <div>PKR {{ money_str(line_total) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="row" style="justify-content:space-between; margin-top:10px">
+        <div class="pill ghost">Total: <b>PKR {{ money_str(total) }}</b></div>
+        <button class="btn" type="submit">Update Cart</button>
+      </div>
+    </form>
+
+    <div class="divider"></div>
+
+    <form class="form" method="post" action="{{ url_for('customer_checkout') }}">
+      <div class="row">
+        <label>Payment
+          <select name="payment_method" required>
+            <option value="COD">COD</option>
+            <option value="Online">Online</option>
+          </select>
+        </label>
+        <label>Instructions <input name="delivery_instructions" placeholder="e.g. Gate 2"></label>
+      </div>
+      <button class="btn primary" type="submit">Place Order</button>
+      <button class="btn warn" type="submit" formaction="{{ url_for('customer_cart_clear') }}"
+        onclick="return confirm('Clear cart?');">Clear</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

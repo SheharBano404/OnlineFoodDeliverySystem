@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ r.name }}</h1>
+<p class="muted">{{ r.address }}</p>
+
+<form class="form card subtle" method="get">
+  <input type="hidden" name="rid" value="{{ r.restaurant_id }}">
+  <div class="row">
+    <label>Search <input name="q" value="{{ q }}" placeholder="Burger, Biryani..."></label>
+    <label>Category
+      <select name="category">
+        <option value="">All</option>
+        <option value="Food" {{ "selected" if category=="Food" else "" }}>Food</option>
+        <option value="Drink" {{ "selected" if category=="Drink" else "" }}>Drink</option>
+      </select>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="only_available" value="1" {{ "checked" if only_available else "" }}>
+      Only Available
+    </label>
+  </div>
+  <button class="btn" type="submit">Filter</button>
+  <a class="btn ghost" href="{{ url_for('customer_cart') }}">View Cart</a>
+</form>
+
+<div class="card" style="margin-top:14px">
+  <div class="card-title">Menu</div>
+  <div class="list">
+    {% for m in items %}
+      <div class="rowcard">
+        <div>
+          <div class="title">#{{ m.menu_id }} — {{ m.name }}</div>
+          <div class="meta">{{ m.category or "—" }} • {{ "Available" if m.availability else "Unavailable" }}</div>
+        </div>
+        <div class="row">
+          <div class="tag">PKR {{ money_str(m.price) }}</div>
+          <form method="post" action="{{ url_for('customer_cart_add') }}">
+            <input type="hidden" name="restaurant_id" value="{{ r.restaurant_id }}">
+            <input type="hidden" name="menu_id" value="{{ m.menu_id }}">
+            <input class="qty" name="qty" type="number" min="1" value="1">
+            <button class="btn tiny primary" type="submit">Add</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

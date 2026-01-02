@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Owner Dashboard</h1>
+
+<div class="card">
+  <div class="card-title">My Restaurants</div>
+  <div class="mini-body">
+    {% for r in rests %}
+      <div><b>#{{ r.restaurant_id }}</b> {{ r.name }} • <span class="tag {{ 'ok' if r.status=='Active' else 'warn' }}">{{ r.status }}</span></div>
+    {% endfor %}
+    {% if not rests %}
+      <div class="muted">No restaurant linked. Ask admin to set owner_id on restaurant.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card subtle" style="margin-top:14px">
+  <div class="card-title">Recent Orders</div>
+  <div class="table">
+    <div class="tr head">
+      <div>#</div><div>Status</div><div>Total</div><div>Placed</div>
+    </div>
+    {% for o in orders %}
+      <div class="tr">
+        <div>#{{ o.order_id }}</div>
+        <div><span class="tag">{{ o.status }}</span></div>
+        <div>PKR {{ money_str(calc_order_total(o)) }}</div>
+        <div>{{ o.placed_at }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

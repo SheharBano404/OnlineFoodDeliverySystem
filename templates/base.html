@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ title or "Food Aggregator" }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('home') }}">
+      <div class="logo">FA</div>
+      <div>
+        <div class="brand-title">Food Aggregator</div>
+        <div class="brand-sub">Flask + MySQL • Role Based</div>
+      </div>
+    </a>
+
+    <div class="top-actions">
+      {% if g.user %}
+        <span class="pill ghost">Logged in: <b>{{ g.user.full_name }}</b> ({{ g.user.type }})</span>
+        <a class="pill" href="{{ url_for('role_redirect') }}">Home</a>
+        <a class="pill warn" href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a class="pill" href="{{ url_for('login') }}">Login</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashwrap">
+          {% for category, msg in messages %}
+            <div class="flash {{ category }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="layout">
+      {% if g.user %}
+      <aside class="sidebar">
+        <div class="side-title">Navigation</div>
+
+        {% if g.user.type == "Admin" %}
+          <a class="side-link" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+          <a class="side-link" href="{{ url_for('admin_restaurants') }}">Restaurants</a>
+          <a class="side-link" href="{{ url_for('admin_agents') }}">Delivery Agents</a>
+          <a class="side-link" href="{{ url_for('admin_orders') }}">Orders & Assign</a>
+        {% elif g.user.type == "Customer" %}
+          <a class="side-link" href="{{ url_for('customer_restaurants') }}">Restaurants</a>
+          <a class="side-link" href="{{ url_for('customer_cart') }}">Cart</a>
+          <a class="side-link" href="{{ url_for('customer_orders') }}">My Orders</a>
+        {% elif g.user.type == "Delivery Agent" %}
+          <a class="side-link" href="{{ url_for('agent_dashboard') }}">My Deliveries</a>
+        {% elif g.user.type == "Restaurant Owner" %}
+          <a class="side-link" href="{{ url_for('owner_dashboard') }}">Owner Dashboard</a>
+          <a class="side-link" href="{{ url_for('owner_menu') }}">Menu Manage</a>
+          <a class="side-link" href="{{ url_for('owner_orders') }}">Orders</a>
+        {% endif %}
+      </aside>
+      {% endif %}
+
+      <section class="content">
+        {% block content %}{% endblock %}
+      </section>
+    </div>
+
+    <footer class="footer">Local project • Server-rendered • Orders track + ETA + Delivery updates</footer>
+  </main>
+</body>
+</html>

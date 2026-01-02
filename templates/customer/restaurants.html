@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Restaurants</h1>
+
+<form class="form card subtle" method="get">
+  <div class="row">
+    <label>Search <input name="q" value="{{ q }}" placeholder="e.g. Grill"></label>
+    <label class="check">
+      <input type="checkbox" name="active_only" value="1" {{ "checked" if active_only else "" }}>
+      Only Active
+    </label>
+  </div>
+  <button class="btn" type="submit">Apply</button>
+</form>
+
+<div class="gridcards" style="margin-top:14px">
+  {% for r in restaurants %}
+    <a class="rest-card" href="{{ url_for('customer_restaurant_menu', rid=r.restaurant_id) }}">
+      <div class="rest-title">{{ r.name }}</div>
+      <div class="rest-meta">{{ r.address }}</div>
+      <div class="rest-tags">
+        <span class="tag {{ 'ok' if r.status=='Active' else 'warn' }}">{{ r.status }}</span>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}

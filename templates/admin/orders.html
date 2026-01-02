@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Orders & Delivery Assign</h1>
+
+<form class="form card subtle" method="get">
+  <div class="row">
+    <label>Status
+      <select name="status">
+        <option value="">All</option>
+        {% for s in ["Placed","Accepted","Preparing","Out for Delivery","Delivered","Cancelled"] %}
+          <option value="{{ s }}" {{ "selected" if status==s else "" }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <button class="btn" type="submit">Filter</button>
+</form>
+
+<div class="card" style="margin-top:14px">
+  <div class="card-title">Latest Orders (50)</div>
+
+  <div class="table">
+    <div class="tr head">
+      <div>#</div><div>Customer</div><div>Restaurant</div><div>Status</div><div>Total</div><div>Assign Agent</div>
+    </div>
+
+    {% for o in orders %}
+    <form class="tr" method="post" action="{{ url_for('admin_assign_delivery', oid=o.order_id) }}">
+      <div>#{{ o.order_id }}</div>
+      <div>{{ o.user.full_name }}</div>
+      <div>{{ o.restaurant.name }}</div>
+      <div><span class="tag">{{ o.status }}</span></div>
+      <div>PKR {{ money_str(calc_order_total(o)) }}</div>
+
+      <div class="row">
+        <select name="delivery_agent_id" required>
+          {% for a in agents %}
+            <option value="{{ a.user_id }}"
+              {{ "selected" if o.delivery and o.delivery.delivery_agent_id==a.user_id else "" }}>
+              #{{ a.user_id }} — {{ a.full_name }}
+            </option>
+          {% endfor %}
+        </select>
+        <input name="expected_drop_at" placeholder="YYYY-MM-DD HH:MM:SS"
+               value="{{ o.delivery.expected_drop_at if o.delivery and o.delivery.expected_drop_at else '' }}">
+        <button class="btn tiny primary" type="submit">Save</button>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

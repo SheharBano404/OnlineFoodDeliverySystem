@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Delivery for Order #{{ order.order_id }}</h1>
+
+<div class="kpi">
+  <div class="kpi-card">
+    <div class="kpi-title">Order Status</div>
+    <div class="kpi-value">{{ order.status }}</div>
+    <div class="kpi-sub">Delivery: {{ order.delivery.status }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-title">Total</div>
+    <div class="kpi-value">PKR {{ money_str(total) }}</div>
+    <div class="kpi-sub">{{ order.restaurant.name }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-title">Customer</div>
+    <div class="kpi-value">{{ order.user.full_name }}</div>
+    <div class="kpi-sub">{{ order.user.address or "—" }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="card-title">Actions</div>
+  <div class="row">
+    <form method="post" action="{{ url_for('agent_update_delivery', oid=order.order_id) }}">
+      <input type="hidden" name="action" value="pickup">
+      <button class="btn primary" type="submit">Mark Pickup</button>
+    </form>
+    <form method="post" action="{{ url_for('agent_update_delivery', oid=order.order_id) }}">
+      <input type="hidden" name="action" value="drop">
+      <button class="btn warn" type="submit">Mark Delivered</button>
+    </form>
+  </div>
+</div>
+
+<div class="card subtle" style="margin-top:14px">
+  <div class="card-title">Update Location</div>
+  <form class="form" method="post" action="{{ url_for('agent_update_location', delivery_id=order.delivery.delivery_id) }}">
+    <div class="row">
+      <label>Lat <input name="lat" required placeholder="24.8607"></label>
+      <label>Lng <input name="lng" required placeholder="67.0011"></label>
+    </div>
+    <label>Note <input name="note" placeholder="Near Saddar"></label>
+    <button class="btn" type="submit">Send</button>
+  </form>
+
+  {% if last_loc %}
+    <div class="mini-body">
+      Last: {{ last_loc.created_at }} — {{ last_loc.lat }}, {{ last_loc.lng }}
+    </div>
+  {% endif %}
+</div>
+
+<div class="card subtle" style="margin-top:14px">
+  <div class="card-title">Timeline</div>
+  <div class="list">
+    {% for h in history %}
+      <div class="rowcard">
+        <div>
+          <div class="title">{{ h.status }}</div>
+          <div class="meta">{{ h.created_at }}{% if h.note %} • {{ h.note }}{% endif %}</div>
+        </div>
+        <div class="tag">OK</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

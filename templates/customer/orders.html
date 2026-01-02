@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>My Orders</h1>
+
+<div class="card">
+  <div class="card-title">Orders</div>
+  <div class="table">
+    <div class="tr head">
+      <div>#</div><div>Restaurant</div><div>Status</div><div>Total</div><div>Track</div>
+    </div>
+    {% for o in orders %}
+      <div class="tr">
+        <div>#{{ o.order_id }}</div>
+        <div>{{ o.restaurant.name }}</div>
+        <div><span class="tag">{{ o.status }}</span></div>
+        <div>PKR {{ money_str(calc_order_total(o)) }}</div>
+        <div><a class="pill" href="{{ url_for('customer_track', oid=o.order_id) }}">Open</a></div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

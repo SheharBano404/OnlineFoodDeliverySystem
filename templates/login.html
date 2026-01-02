@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  /* Full screen centering */
+  .login-page-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 120px);
+    padding: 40px 20px;
+    width: 100%;
+  }
+
+  /* Main Wider Login Card */
+  .login-card {
+    width: 200%;
+    max-width: 550px; /* Increased width */
+    padding: 50px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    margin-bottom: 50px;
+    margin-left: 900px;
+  }
+
+  .card-title {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 30px;
+    text-align: center;
+    letter-spacing: -1px;
+  }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .form label {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .form input {
+    height: 56px;
+    border-radius: 14px;
+    padding: 0 18px;
+    font-size: 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    transition: all 0.2s ease;
+  }
+
+  .form input:focus {
+    outline: none;
+    border-color: #5d5fef;
+    box-shadow: 0 0 0 4px rgba(93, 95, 239, 0.2);
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .btn.primary {
+    height: 56px;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 700;
+    background: #5d5fef;
+    color: white;
+    border: none;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: transform 0.2s, filter 0.2s;
+  }
+
+  .btn.primary:hover {
+    filter: brightness(1.2);
+    transform: translateY(-1px);
+  }
+
+  /* Seeded Accounts Single Row Grid */
+  .seeded-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* 4 items in a single row */
+    gap: 40px;
+    width: 100%;
+    max-width: 1100px;
+    margin-left: 350px;
+  }
+
+  .seed-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 20px;
+    border-radius: 20px;
+    text-align: center;
+    backdrop-filter: blur(5px);
+  }
+
+  .seed-role {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #5d5fef;
+    font-weight: 800;
+    margin-bottom: 12px;
+  }
+
+  .seed-desc {
+    font-size: 12.5px;
+    line-height: 1.4;
+    opacity: 0.7;
+    margin-bottom: 15px;
+    height: 50px; /* Ensures alignment across boxes */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .seed-creds {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(0,0,0,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .seed-pass {
+    display: block;
+    opacity: 0.5;
+    font-size: 11px;
+    margin-top: 4px;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 1000px) {
+    .seeded-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .seeded-grid { grid-template-columns: 1fr; }
+    .login-card { padding: 30px; }
+  }
+</style>
+
+<div class="login-page-container">
+  
+  <div class="login-card">
+    <div class="card-title">Sign in</div>
+    <form class="form" method="post">
+      <label>Email Address
+        <input name="email" type="email" placeholder="name@example.com" required>
+      </label>
+      <label>Password
+        <input name="password" type="password" placeholder="••••••••" required>
+      </label>
+      <button class="btn primary" type="submit">Continue</button>
+    </form>
+  </div>
+
+  <div class="seeded-grid">
+    
+    <div class="seed-item">
+      <span class="seed-role">Admin</span>
+      <div class="seed-desc">Full system oversight, user management, and global analytics.</div>
+      <div class="seed-creds">
+        admin@fa.local
+        <span class="seed-pass">admin123</span>
+      </div>
+    </div>
+
+    <div class="seed-item">
+      <span class="seed-role">Customer</span>
+      <div class="seed-desc">Browse menus, place orders, and track deliveries in real-time.</div>
+      <div class="seed-creds">
+        cust1@fa.local
+        <span class="seed-pass">cust123</span>
+      </div>
+    </div>
+
+    <div class="seed-item">
+      <span class="seed-role">Agent</span>
+      <div class="seed-desc">Accept delivery tasks and update order fulfillment status.</div>
+      <div class="seed-creds">
+        agent1@fa.local
+        <span class="seed-pass">agent123</span>
+      </div>
+    </div>
+
+    <div class="seed-item">
+      <span class="seed-role">Owner</span>
+      <div class="seed-desc">Manage restaurant profile, update menus, and view sales.</div>
+      <div class="seed-creds">
+        owner1@fa.local
+        <span class="seed-pass">owner123</span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}

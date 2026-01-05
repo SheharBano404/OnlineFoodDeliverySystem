@@ -2,32 +2,68 @@
 {% block content %}
 <h1>Owner Dashboard</h1>
 
-<div class="card">
+<!-- Restaurants owned -->
+<div class="card glow">
   <div class="card-title">My Restaurants</div>
   <div class="mini-body">
     {% for r in rests %}
-      <div><b>#{{ r.restaurant_id }}</b> {{ r.name }} • <span class="tag {{ 'ok' if r.status=='Active' else 'warn' }}">{{ r.status }}</span></div>
+      <div>
+        <b>#{{ r.restaurant_id }}</b> {{ r.name }}
+        • <span class="tag {% if r.status == 'Active' %}ok{% elif r.status == 'Busy' %}warn{% else %}warn{% endif %}">
+          {{ r.status }}
+        </span>
+      </div>
     {% endfor %}
     {% if not rests %}
-      <div class="muted">No restaurant linked. Ask admin to set owner_id on restaurant.</div>
+      <div class="muted">No restaurant linked. Ask admin to set <code>owner_id</code> on a restaurant.</div>
     {% endif %}
   </div>
+  {% if rests %}
+    <div class="row" style="margin-top:12px;justify-content:flex-end">
+      <a class="btn primary" href="{{ url_for('owner_menu') }}">Manage Menu</a>
+    </div>
+  {% endif %}
 </div>
 
-<div class="card subtle" style="margin-top:14px">
+<!-- Recent orders -->
+<div class="card subtle" style="margin-top:16px">
   <div class="card-title">Recent Orders</div>
   <div class="table">
     <div class="tr head">
-      <div>#</div><div>Status</div><div>Total</div><div>Placed</div>
+      <div>#</div>
+      <div>Status</div>
+      <div>Total</div>
+      <div>Placed</div>
+      <div>Action</div>
     </div>
     {% for o in orders %}
       <div class="tr">
         <div>#{{ o.order_id }}</div>
-        <div><span class="tag">{{ o.status }}</span></div>
+        <div>
+          <span class="tag {% if o.status == 'Delivered' %}ok{% elif o.status == 'Cancelled' %}warn{% endif %}">
+            {{ o.status }}
+          </span>
+        </div>
         <div>PKR {{ money_str(calc_order_total(o)) }}</div>
         <div>{{ o.placed_at }}</div>
+        <div>
+          {% if o.status in ['Placed','Accepted','Preparing'] %}
+            <form method="post" action="{{ url_for('owner_update_order_status', oid=o.order_id) }}">
+              <select name="status">
+                <option value="Accepted">Accept</option>
+                <option value="Preparing">Preparing</option>
+              </select>
+              <button class="btn tiny primary" type="submit">Update</button>
+            </form>
+          {% else %}
+            <span class="pill ghost">—</span>
+          {% endif %}
+        </div>
       </div>
     {% endfor %}
+    {% if not orders %}
+      <p class="muted" style="padding:10px">No recent orders yet.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

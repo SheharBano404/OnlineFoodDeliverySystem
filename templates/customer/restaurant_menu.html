@@ -3,11 +3,16 @@
 <h1>{{ r.name }}</h1>
 <p class="muted">{{ r.address }}</p>
 
+<!-- Filter form -->
 <form class="form card subtle" method="get">
   <input type="hidden" name="rid" value="{{ r.restaurant_id }}">
   <div class="row">
-    <label>Search <input name="q" value="{{ q }}" placeholder="Burger, Biryani..."></label>
-    <label>Category
+    <label>
+      Search
+      <input name="q" value="{{ q }}" placeholder="Burger, Biryani...">
+    </label>
+    <label>
+      Category
       <select name="category">
         <option value="">All</option>
         <option value="Food" {{ "selected" if category=="Food" else "" }}>Food</option>
@@ -19,30 +24,47 @@
       Only Available
     </label>
   </div>
-  <button class="btn" type="submit">Filter</button>
-  <a class="btn ghost" href="{{ url_for('customer_cart') }}">View Cart</a>
+  <div class="row" style="margin-top:10px;justify-content:flex-end;gap:10px">
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn ghost" href="{{ url_for('public_cart') }}">View Cart</a>
+  </div>
 </form>
 
-<div class="card" style="margin-top:14px">
+<!-- Menu items -->
+<div class="card glow" style="margin-top:14px">
   <div class="card-title">Menu</div>
   <div class="list">
     {% for m in items %}
       <div class="rowcard">
         <div>
           <div class="title">#{{ m.menu_id }} — {{ m.name }}</div>
-          <div class="meta">{{ m.category or "—" }} • {{ "Available" if m.availability else "Unavailable" }}</div>
+          <div class="meta">
+            {{ m.category or "—" }} • 
+            {% if m.availability %}
+              <span class="tag ok">Available</span>
+            {% else %}
+              <span class="tag warn">Unavailable</span>
+            {% endif %}
+          </div>
         </div>
-        <div class="row">
+        <div class="row" style="justify-content:flex-end;gap:10px">
           <div class="tag">PKR {{ money_str(m.price) }}</div>
-          <form method="post" action="{{ url_for('customer_cart_add') }}">
-            <input type="hidden" name="restaurant_id" value="{{ r.restaurant_id }}">
-            <input type="hidden" name="menu_id" value="{{ m.menu_id }}">
-            <input class="qty" name="qty" type="number" min="1" value="1">
-            <button class="btn tiny primary" type="submit">Add</button>
-          </form>
+          {% if m.availability %}
+            <form method="post" action="{{ url_for('public_cart_add') }}">
+              <input type="hidden" name="restaurant_id" value="{{ r.restaurant_id }}">
+              <input type="hidden" name="menu_id" value="{{ m.menu_id }}">
+              <input class="qty" name="qty" type="number" min="1" value="1">
+              <button class="btn tiny primary" type="submit">Add</button>
+            </form>
+          {% else %}
+            <span class="pill warn">Not Available</span>
+          {% endif %}
         </div>
       </div>
     {% endfor %}
+    {% if not items %}
+      <p class="muted">No menu items found for this filter.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

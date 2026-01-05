@@ -1,10 +1,13 @@
+-- Database
 CREATE DATABASE IF NOT EXISTS food_aggregator
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_general_ci;
 
 USE food_aggregator;
 
--- USERS
+-- =========================
+-- USERS (unchanged structure)
+-- =========================
 CREATE TABLE IF NOT EXISTS users (
   user_id       INT AUTO_INCREMENT PRIMARY KEY,
   full_name     VARCHAR(120) NOT NULL,
@@ -16,22 +19,27 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- RESTAURANTS
+-- =========================
+-- RESTAURANTS (add Busy status)
+-- =========================
 CREATE TABLE IF NOT EXISTS restaurants (
   restaurant_id INT AUTO_INCREMENT PRIMARY KEY,
   owner_id      INT NULL,
   name          VARCHAR(140) NOT NULL,
   address       VARCHAR(255) NOT NULL,
-  status        ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+  status        ENUM('Active','Inactive','Busy') NOT NULL DEFAULT 'Active',
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_rest_owner
     FOREIGN KEY (owner_id) REFERENCES users(user_id)
     ON DELETE SET NULL ON UPDATE CASCADE,
   INDEX idx_rest_owner (owner_id),
-  INDEX idx_rest_status (status)
+  INDEX idx_rest_status (status),
+  INDEX idx_rest_name (name)
 ) ENGINE=InnoDB;
 
+-- =========================
 -- MENU ITEMS
+-- =========================
 CREATE TABLE IF NOT EXISTS menu_items (
   menu_id       INT AUTO_INCREMENT PRIMARY KEY,
   restaurant_id INT NOT NULL,
@@ -45,14 +53,18 @@ CREATE TABLE IF NOT EXISTS menu_items (
     ON DELETE RESTRICT ON UPDATE CASCADE,
   INDEX idx_menu_restaurant (restaurant_id),
   INDEX idx_menu_avail (availability),
-  INDEX idx_menu_cat (category)
+  INDEX idx_menu_cat (category),
+  INDEX idx_menu_name (name)
 ) ENGINE=InnoDB;
 
--- ORDERS
+-- =========================
+-- ORDERS (public-friendly: user_id NULL, tracking_code, customer fields)
+-- =========================
 CREATE TABLE IF NOT EXISTS orders (
   order_id              INT AUTO_INCREMENT PRIMARY KEY,
-  user_id               INT NOT NULL,
+  user_id               INT NULL, -- nullable for guest/public checkout
   restaurant_id         INT NOT NULL,
+
   status                ENUM('Placed','Accepted','Preparing','Out for Delivery','Delivered','Cancelled')
                         NOT NULL DEFAULT 'Placed',
   payment_method        ENUM('COD','Online') NOT NULL,
@@ -65,9 +77,15 @@ CREATE TABLE IF NOT EXISTS orders (
   delivered_at          TIMESTAMP NULL,
   cancelled_at          TIMESTAMP NULL,
 
+  -- Novel features
+  tracking_code         VARCHAR(12) NOT NULL UNIQUE,
+  customer_name         VARCHAR(120) NULL,
+  customer_phone        VARCHAR(30)  NULL,
+  customer_address      VARCHAR(255) NULL,
+
   CONSTRAINT fk_orders_user
     FOREIGN KEY (user_id) REFERENCES users(user_id)
-    ON DELETE RESTRICT ON UPDATE CASCADE,
+    ON DELETE SET NULL ON UPDATE CASCADE,
 
   CONSTRAINT fk_orders_restaurant
     FOREIGN KEY (restaurant_id) REFERENCES restaurants(restaurant_id)
@@ -75,10 +93,15 @@ CREATE TABLE IF NOT EXISTS orders (
 
   INDEX idx_orders_user (user_id),
   INDEX idx_orders_restaurant (restaurant_id),
-  INDEX idx_orders_status (status)
+  INDEX idx_orders_status (status),
+  INDEX idx_orders_tracking (tracking_code),
+  INDEX idx_orders_phone (customer_phone),
+  INDEX idx_orders_placed (placed_at)
 ) ENGINE=InnoDB;
 
+-- =========================
 -- ORDER ITEMS
+-- =========================
 CREATE TABLE IF NOT EXISTS order_items (
   orderitem_id      INT AUTO_INCREMENT PRIMARY KEY,
   order_id          INT NOT NULL,
@@ -91,10 +114,13 @@ CREATE TABLE IF NOT EXISTS order_items (
   CONSTRAINT fk_orderitems_menu
     FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
-  INDEX idx_orderitems_order (order_id)
+  INDEX idx_orderitems_order (order_id),
+  INDEX idx_orderitems_menu (menu_item_id)
 ) ENGINE=InnoDB;
 
+-- =========================
 -- DELIVERY ASSIGNMENTS
+-- =========================
 CREATE TABLE IF NOT EXISTS delivery_assignments (
   delivery_id       INT AUTO_INCREMENT PRIMARY KEY,
   order_id          INT NOT NULL UNIQUE,
@@ -110,17 +136,21 @@ CREATE TABLE IF NOT EXISTS delivery_assignments (
   CONSTRAINT fk_delivery_agent
     FOREIGN KEY (delivery_agent_id) REFERENCES users(user_id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
-  INDEX idx_delivery_agent (delivery_agent_id)
+  INDEX idx_delivery_agent (delivery_agent_id),
+  INDEX idx_delivery_status (status),
+  INDEX idx_delivery_expected (expected_drop_at)
 ) ENGINE=InnoDB;
 
+-- =========================
 -- ORDER STATUS HISTORY (timeline)
+-- =========================
 CREATE TABLE IF NOT EXISTS order_status_history (
-  history_id   INT AUTO_INCREMENT PRIMARY KEY,
-  order_id     INT NOT NULL,
-  status       VARCHAR(40) NOT NULL,
+  history_id    INT AUTO_INCREMENT PRIMARY KEY,
+  order_id      INT NOT NULL,
+  status        VARCHAR(40) NOT NULL,
   actor_user_id INT NULL,
-  note         VARCHAR(255) NULL,
-  created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  note          VARCHAR(255) NULL,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_hist_order
     FOREIGN KEY (order_id) REFERENCES orders(order_id)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -128,10 +158,13 @@ CREATE TABLE IF NOT EXISTS order_status_history (
     FOREIGN KEY (actor_user_id) REFERENCES users(user_id)
     ON DELETE SET NULL ON UPDATE CASCADE,
   INDEX idx_hist_order (order_id),
-  INDEX idx_hist_created (created_at)
+  INDEX idx_hist_created (created_at),
+  INDEX idx_hist_status (status)
 ) ENGINE=InnoDB;
 
+-- =========================
 -- DELIVERY LOCATION UPDATES (basic tracking)
+-- =========================
 CREATE TABLE IF NOT EXISTS delivery_locations (
   location_id INT AUTO_INCREMENT PRIMARY KEY,
   delivery_id INT NOT NULL,
@@ -146,30 +179,27 @@ CREATE TABLE IF NOT EXISTS delivery_locations (
   INDEX idx_loc_created (created_at)
 ) ENGINE=InnoDB;
 
+-- =========================
 -- ORDER TOTALS VIEW
+-- =========================
 CREATE OR REPLACE VIEW v_order_totals AS
 SELECT
   o.order_id,
   o.user_id,
   o.restaurant_id,
   o.status,
+  o.tracking_code,
+  o.customer_phone,
   o.placed_at,
   COALESCE(SUM(oi.quantity * oi.price_at_purchase), 0.00) AS total
 FROM orders o
 LEFT JOIN order_items oi ON oi.order_id = o.order_id
 GROUP BY o.order_id;
 
+-- =========================
+-- TRIGGERS (remove customer-only restriction; keep agent validation)
+-- =========================
 DELIMITER $$
-
-DROP TRIGGER IF EXISTS trg_orders_user_must_be_customer $$
-CREATE TRIGGER trg_orders_user_must_be_customer
-BEFORE INSERT ON orders
-FOR EACH ROW
-BEGIN
-  IF (SELECT type FROM users WHERE user_id = NEW.user_id) <> 'Customer' THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Only Customers can place orders';
-  END IF;
-END $$
 
 DROP TRIGGER IF EXISTS trg_delivery_agent_must_be_agent $$
 CREATE TRIGGER trg_delivery_agent_must_be_agent

@@ -1,22 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>My Orders</h1>
+<h1 style="text-align:center; font-size:32px; font-weight:900; margin-bottom:30px; color:#7c5cff;">
+  My Orders
+</h1>
 
-<div class="card">
-  <div class="card-title">Orders</div>
-  <div class="table">
-    <div class="tr head">
-      <div>#</div><div>Restaurant</div><div>Status</div><div>Total</div><div>Track</div>
+<div style="display:flex; justify-content:center; padding:20px;  margin-left: 150px; margin-right: -750px;">
+  <div style="width:100%; max-width:1000px;">
+
+    <div class="card glow" style="margin:0 auto; width:100%;">
+      <div class="card-title">Find Your Orders</div>
+
+      <!-- Phone verification form -->
+      <form class="form" method="post" action="{{ url_for('public_my_orders') }}">
+        <label>
+          Phone Number
+          <input name="phone_number" placeholder="03xx-xxxxxxx" value="{{ phone or '' }}" required>
+        </label>
+        <button class="btn primary" type="submit">Show Orders</button>
+      </form>
     </div>
-    {% for o in orders %}
-      <div class="tr">
-        <div>#{{ o.order_id }}</div>
-        <div>{{ o.restaurant.name }}</div>
-        <div><span class="tag">{{ o.status }}</span></div>
-        <div>PKR {{ money_str(calc_order_total(o)) }}</div>
-        <div><a class="pill" href="{{ url_for('customer_track', oid=o.order_id) }}">Open</a></div>
+
+    {% if orders %}
+      <div class="card" style="margin-top:24px; width:100%;">
+        <div class="card-title">Orders</div>
+        <div class="table" style="width:100%;">
+          <div class="tr head">
+            <div>#</div>
+            <div>Restaurant</div>
+            <div>Status</div>
+            <div>Total</div>
+            <div>Track</div>
+            <div>Reorder</div>
+          </div>
+          {% for o in orders %}
+            <div class="tr">
+              <div>#{{ o.order_id }}</div>
+              <div>{{ o.restaurant.name }}</div>
+              <div>
+                <span class="tag {% if o.status == 'Delivered' %}ok{% elif o.status == 'Cancelled' %}warn{% endif %}">
+                  {{ o.status }}
+                </span>
+              </div>
+              <div>PKR {{ money_str(calc_order_total(o)) }}</div>
+              <div>
+                <a class="pill" href="{{ url_for('public_track', tracking_code=o.tracking_code) }}">
+                  Track
+                </a>
+              </div>
+              <div>
+                <form method="post" action="{{ url_for('public_reorder', oid=o.order_id) }}">
+                  <button class="btn tiny" type="submit">Reorder</button>
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
       </div>
-    {% endfor %}
+    {% endif %}
+
   </div>
 </div>
 {% endblock %}

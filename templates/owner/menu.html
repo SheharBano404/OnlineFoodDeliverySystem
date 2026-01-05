@@ -3,6 +3,7 @@
 <h1>Menu Management</h1>
 
 {% if rests and active_rest %}
+  <!-- Restaurant selector -->
   <form class="form card subtle" method="get">
     <label>Select Restaurant
       <select name="rid" onchange="this.form.submit()">
@@ -15,12 +16,13 @@
     </label>
   </form>
 
-  <div class="card">
+  <!-- Add new item -->
+  <div class="card glow" style="margin-top:14px">
     <div class="card-title">Add Item ({{ active_rest.name }})</div>
     <form class="form" method="post">
       <div class="row">
-        <label>Name <input name="name" required></label>
-        <label>Price <input name="price" type="number" step="0.01" required></label>
+        <label>Name <input name="name" placeholder="e.g. Chicken Burger" required></label>
+        <label>Price <input name="price" type="number" step="0.01" placeholder="499.00" required></label>
       </div>
       <div class="row">
         <label>Category
@@ -30,17 +32,26 @@
             <option value="Drink">Drink</option>
           </select>
         </label>
-        <label class="check"><input type="checkbox" name="availability" checked> Available</label>
+        <label class="check">
+          <input type="checkbox" name="availability" checked> Available
+        </label>
       </div>
-      <button class="btn primary" type="submit">Add</button>
+      <button class="btn primary" type="submit">Add Item</button>
     </form>
   </div>
 
-  <div class="card subtle" style="margin-top:14px">
+  <!-- Existing items -->
+  <div class="card subtle" style="margin-top:16px">
     <div class="card-title">Items</div>
     <div class="table">
       <div class="tr head">
-        <div>ID</div><div>Name</div><div>Price</div><div>Cat</div><div>Avail</div><div>Save</div><div>Delete</div>
+        <div>ID</div>
+        <div>Name</div>
+        <div>Price</div>
+        <div>Category</div>
+        <div>Avail</div>
+        <div>Save</div>
+        <div>Delete</div>
       </div>
       {% for m in items %}
       <form class="tr" method="post" action="{{ url_for('owner_menu_update', mid=m.menu_id) }}">
@@ -55,7 +66,14 @@
           </select>
         </div>
         <div>
-          <label class="check"><input type="checkbox" name="availability" {{ "checked" if m.availability else "" }}> </label>
+          <label class="check">
+            <input type="checkbox" name="availability" {{ "checked" if m.availability else "" }}>
+            {% if m.availability %}
+              <span class="tag ok">Available</span>
+            {% else %}
+              <span class="tag warn">Unavailable</span>
+            {% endif %}
+          </label>
         </div>
         <div><button class="btn tiny primary" type="submit">Save</button></div>
         <div>
@@ -64,12 +82,16 @@
         </div>
       </form>
       {% endfor %}
+      {% if not items %}
+        <p class="muted" style="padding:10px">No items yet. Add your first menu item above.</p>
+      {% endif %}
     </div>
   </div>
 {% else %}
+  <!-- No restaurant linked -->
   <div class="card subtle">
     <div class="card-title">No Restaurant</div>
-    <p class="muted">Admin ko bolo owner ko restaurant assign kare.</p>
+    <p class="muted">Ask the admin to assign a restaurant to your owner account.</p>
   </div>
 {% endif %}
 

@@ -2,19 +2,24 @@
 {% block content %}
 <h1>Restaurants</h1>
 
-<div class="card">
+<!-- Add new restaurant -->
+<div class="card glow">
   <div class="card-title">Add Restaurant</div>
   <form class="form" method="post">
     <div class="row">
-      <label>Name <input name="name" required></label>
+      <label>Name
+        <input name="name" placeholder="e.g. BBQ Tonight" required>
+      </label>
       <label>Status
         <select name="status">
-          <option>Active</option>
-          <option>Inactive</option>
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
         </select>
       </label>
     </div>
-    <label>Address <input name="address" required></label>
+    <label>Address
+      <input name="address" placeholder="Street, City" required>
+    </label>
     <label>Owner
       <select name="owner_id">
         <option value="">— None —</option>
@@ -23,16 +28,20 @@
         {% endfor %}
       </select>
     </label>
-    <button class="btn primary" type="submit">Create</button>
+    <button class="btn primary" type="submit">Create Restaurant</button>
   </form>
 </div>
 
-<div class="card subtle" style="margin-top:14px">
+<!-- List / Edit restaurants -->
+<div class="card subtle" style="margin-top:16px">
   <div class="card-title">List / Edit</div>
 
+  <!-- Filter form -->
   <form class="form" method="get">
     <div class="row">
-      <label>Search <input name="q" value="{{ q }}"></label>
+      <label>Search
+        <input name="q" value="{{ q or '' }}" placeholder="Search by name">
+      </label>
       <label>Status
         <select name="status">
           <option value="">All</option>
@@ -44,9 +53,16 @@
     <button class="btn" type="submit">Filter</button>
   </form>
 
+  <!-- Restaurants table -->
   <div class="table">
     <div class="tr head">
-      <div>ID</div><div>Name</div><div>Status</div><div>Owner</div><div>Address</div><div>Save</div><div>Delete</div>
+      <div>ID</div>
+      <div>Name</div>
+      <div>Status</div>
+      <div>Owner</div>
+      <div>Address</div>
+      <div>Save</div>
+      <div>Delete</div>
     </div>
     {% for r in restaurants %}
     <form class="tr" method="post" action="{{ url_for('admin_restaurant_update', rid=r.restaurant_id) }}">
@@ -54,8 +70,8 @@
       <div><input name="name" value="{{ r.name }}" required></div>
       <div>
         <select name="status">
-          <option {{ "selected" if r.status=="Active" else "" }}>Active</option>
-          <option {{ "selected" if r.status=="Inactive" else "" }}>Inactive</option>
+          <option value="Active" {{ "selected" if r.status=="Active" else "" }}>Active</option>
+          <option value="Inactive" {{ "selected" if r.status=="Inactive" else "" }}>Inactive</option>
         </select>
       </div>
       <div>
@@ -63,7 +79,7 @@
           <option value="">— None —</option>
           {% for o in owners %}
             <option value="{{ o.user_id }}" {{ "selected" if r.owner_id==o.user_id else "" }}>
-              #{{ o.user_id }} {{ o.full_name }}
+              #{{ o.user_id }} — {{ o.full_name }}
             </option>
           {% endfor %}
         </select>
@@ -71,11 +87,17 @@
       <div><input name="address" value="{{ r.address }}" required></div>
       <div><button class="btn tiny primary" type="submit">Save</button></div>
       <div>
-        <button class="btn tiny warn" type="submit" formaction="{{ url_for('admin_restaurant_delete', rid=r.restaurant_id) }}"
-          onclick="return confirm('Delete restaurant?');">Delete</button>
+        <button class="btn tiny warn" type="submit"
+                formaction="{{ url_for('admin_restaurant_delete', rid=r.restaurant_id) }}"
+                onclick="return confirm('Delete restaurant {{ r.name }}?');">
+          Delete
+        </button>
       </div>
     </form>
     {% endfor %}
+    {% if not restaurants %}
+      <p class="muted" style="padding:10px">No restaurants found. Add your first restaurant above.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

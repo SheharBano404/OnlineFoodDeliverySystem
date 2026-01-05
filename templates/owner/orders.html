@@ -2,29 +2,46 @@
 {% block content %}
 <h1>Restaurant Orders</h1>
 
-<div class="card">
+<div class="card glow">
   <div class="card-title">Orders</div>
   <div class="table">
     <div class="tr head">
-      <div>#</div><div>Restaurant</div><div>Status</div><div>Total</div><div>Actions</div>
+      <div>#</div>
+      <div>Restaurant</div>
+      <div>Status</div>
+      <div>Total</div>
+      <div>Placed</div>
+      <div>Actions</div>
     </div>
     {% for o in orders %}
       <div class="tr">
         <div>#{{ o.order_id }}</div>
         <div>{{ o.restaurant.name }}</div>
-        <div><span class="tag">{{ o.status }}</span></div>
+        <div>
+          <span class="tag {% if o.status == 'Delivered' %}ok{% elif o.status == 'Cancelled' %}warn{% endif %}">
+            {{ o.status }}
+          </span>
+        </div>
         <div>PKR {{ money_str(calc_order_total(o)) }}</div>
+        <div>{{ o.placed_at }}</div>
         <div class="row">
-          <form method="post" action="{{ url_for('owner_update_order_status', oid=o.order_id) }}">
-            <select name="status">
-              <option value="Accepted">Accept</option>
-              <option value="Preparing">Preparing</option>
-            </select>
-            <button class="btn tiny primary" type="submit">Update</button>
-          </form>
+          {% if o.status in ['Placed','Accepted','Preparing'] %}
+            <form method="post" action="{{ url_for('owner_update_order_status', oid=o.order_id) }}">
+              <select name="status">
+                <option value="Accepted" {% if o.status == 'Accepted' %}selected{% endif %}>Accept</option>
+                <option value="Preparing" {% if o.status == 'Preparing' %}selected{% endif %}>Preparing</option>
+              </select>
+              <button class="btn tiny primary" type="submit">Update</button>
+            </form>
+          {% else %}
+            <span class="pill ghost">No actions</span>
+          {% endif %}
         </div>
       </div>
     {% endfor %}
+    {% if not orders %}
+      <p class="muted" style="padding:10px">No orders found for your restaurants.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

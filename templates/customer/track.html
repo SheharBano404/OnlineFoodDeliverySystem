@@ -1,70 +1,98 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Track Order #{{ order.order_id }}</h1>
+<h1 style="text-align:center; font-size:32px; font-weight:900; margin-bottom:30px; color:#7c5cff;">
+  Track Order
+</h1>
 
-<div class="kpi">
-  <div class="kpi-card">
-    <div class="kpi-title">Status</div>
-    <div class="kpi-value">{{ order.status }}</div>
-    <div class="kpi-sub">{{ eta_label }}: {{ eta_detail }}</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-title">Total</div>
-    <div class="kpi-value">PKR {{ money_str(total) }}</div>
-    <div class="kpi-sub">{{ order.payment_method }}</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-title">Delivery</div>
-    <div class="kpi-value">
-      {% if order.delivery %}{{ order.delivery.status }}{% else %}Not assigned{% endif %}
-    </div>
-    <div class="kpi-sub">
-      {% if order.delivery %}Agent: {{ order.delivery.agent.full_name }}{% endif %}
-    </div>
-  </div>
-</div>
+<div style="width:100%; max-width:1400px; padding:0 40px;">
 
-<div class="card" style="margin-top:14px">
-  <div class="card-title">Items</div>
-  <div class="list">
-    {% for it in order.items %}
-      <div class="rowcard">
-        <div>
-          <div class="title">{{ it.menu_item.name }}</div>
-          <div class="meta">Qty {{ it.quantity }} • Price {{ money_str(it.price_at_purchase) }}</div>
-        </div>
-        <div class="tag">PKR {{ money_str((it.price_at_purchase * it.quantity)) }}</div>
+  <!-- Tracking header -->
+  <div class="card glow" style="margin-bottom:20px; width:200%; margin-left:350px; margin-right:-200px;">
+    <div class="card-title">Tracking Code</div>
+    <div class="pill">{{ order.tracking_code }}</div>
+    <p class="muted">Placed on {{ order.placed_at }}</p>
+  </div>
+
+  <!-- KPI summary -->
+  <div class="kpi" style="display:grid; grid-template-columns:repeat(3,1fr); gap:170px; width:200%; margin-left:150px;">
+    <div class="kpi-card" style="width:200%;">
+      <div class="kpi-title">Status</div>
+      <div class="kpi-value">{{ order.status }}</div>
+      <div class="kpi-sub">{{ eta_label }}: {{ eta_detail }}</div>
+    </div>
+    <div class="kpi-card" style="width:200%;">
+      <div class="kpi-title">Total</div>
+      <div class="kpi-value">PKR {{ money_str(total) }}</div>
+      <div class="kpi-sub">{{ order.payment_method }}</div>
+    </div>
+    <div class="kpi-card" style="width:200%;">
+      <div class="kpi-title">Delivery</div>
+      <div class="kpi-value">
+        {% if order.delivery %}{{ order.delivery.status }}{% else %}Not assigned{% endif %}
       </div>
-    {% endfor %}
-  </div>
-</div>
-
-<div class="card subtle" style="margin-top:14px">
-  <div class="card-title">Timeline</div>
-  <div class="list">
-    {% for h in history %}
-      <div class="rowcard">
-        <div>
-          <div class="title">{{ h.status }}</div>
-          <div class="meta">{{ h.created_at }}{% if h.note %} • {{ h.note }}{% endif %}</div>
-        </div>
-        <div class="tag">OK</div>
+      <div class="kpi-sub">
+        {% if order.delivery %}Agent: {{ order.delivery.agent.full_name }}{% else %}—{% endif %}
       </div>
-    {% endfor %}
-  </div>
-</div>
-
-<div class="card subtle" style="margin-top:14px">
-  <div class="card-title">Live Location</div>
-  {% if last_loc %}
-    <div class="mini-body">
-      <div>Last update: <b>{{ last_loc.created_at }}</b></div>
-      <div>Lat/Lng: <b>{{ last_loc.lat }}, {{ last_loc.lng }}</b></div>
-      <a class="pill" target="_blank"
-         href="https://www.google.com/maps?q={{ last_loc.lat }},{{ last_loc.lng }}">Open in Google Maps</a>
     </div>
-  {% else %}
-    <div class="mini-body muted">No location updates yet.</div>
-  {% endif %}
+  </div>
+
+  <!-- Items / Timeline / Live Location in 3-column grid -->
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:150px; width:100%; margin-top: 30px; margin-left:100px;">
+
+    <!-- Items -->
+    <div class="card" style="width:170%;">
+      <div class="card-title">Items</div>
+      <div class="list">
+        {% for it in order.items %}
+          <div class="rowcard">
+            <div>
+              <div class="title">{{ it.menu_item.name }}</div>
+              <div class="meta">Qty {{ it.quantity }} • Price PKR {{ money_str(it.price_at_purchase) }}</div>
+            </div>
+            <div class="tag">PKR {{ money_str(it.price_at_purchase * it.quantity) }}</div>
+          </div>
+        {% endfor %}
+        {% if not order.items %}
+          <p class="muted">No items found for this order.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card subtle" style="width:170%;">
+      <div class="card-title">Timeline</div>
+      <div class="list">
+        {% for h in history %}
+          <div class="rowcard">
+            <div>
+              <div class="title">{{ h.status }}</div>
+              <div class="meta">{{ h.created_at }}{% if h.note %} • {{ h.note }}{% endif %}</div>
+            </div>
+            <div class="tag ok">✓</div>
+          </div>
+        {% endfor %}
+        {% if not history %}
+          <p class="muted">No timeline events yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Live Location -->
+    <div class="card subtle" style="width:240%;">
+      <div class="card-title">Live Location</div>
+      {% if last_loc %}
+        <div class="mini-body">
+          <div>Last update: <b>{{ last_loc.created_at }}</b></div>
+          <div>Lat/Lng: <b>{{ last_loc.lat }}, {{ last_loc.lng }}</b></div>
+          <a class="pill" target="_blank"
+             href="https://www.google.com/maps?q={{ last_loc.lat }},{{ last_loc.lng }}">Open in Google Maps</a>
+        </div>
+      {% else %}
+        <div class="mini-body muted">No location updates yet.</div>
+      {% endif %}
+    </div>
+
+  </div>
+
 </div>
 {% endblock %}

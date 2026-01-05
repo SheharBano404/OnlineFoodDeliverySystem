@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
+import random
+import string
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, session, g, abort
@@ -42,7 +43,7 @@ class Restaurant(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
     name = db.Column(db.String(140), nullable=False)
     address = db.Column(db.String(255), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default="Active")
+    status = db.Column(db.String(20), nullable=False, default="Active")  # Active / Inactive / Busy
     created_at = db.Column(db.DateTime, server_default=func.current_timestamp(), nullable=False)
 
     owner = db.relationship("User", foreign_keys=[owner_id])
@@ -64,7 +65,7 @@ class MenuItem(db.Model):
 class Order(db.Model):
     __tablename__ = "orders"
     order_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)  # nullable for guest checkout
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.restaurant_id"), nullable=False)
 
     status = db.Column(db.String(30), nullable=False, default="Placed")
@@ -77,6 +78,12 @@ class Order(db.Model):
     out_for_delivery_at = db.Column(db.DateTime, nullable=True)
     delivered_at = db.Column(db.DateTime, nullable=True)
     cancelled_at = db.Column(db.DateTime, nullable=True)
+
+    # Novel features
+    tracking_code = db.Column(db.String(12), unique=True, nullable=False)
+    customer_name = db.Column(db.String(120), nullable=True)
+    customer_phone = db.Column(db.String(30), nullable=True)
+    customer_address = db.Column(db.String(255), nullable=True)
 
     user = db.relationship("User", backref=db.backref("orders", lazy=True))
     restaurant = db.relationship("Restaurant", backref=db.backref("orders", lazy=True))
@@ -191,15 +198,6 @@ def eta_for_order(order: Order) -> tuple[str, str]:
     return ("ETA", f"{mins} min (estimated)")
 
 
-def login_required(fn):
-    def wrapper(*args, **kwargs):
-        if not g.user:
-            return redirect(url_for("login", next=request.path))
-        return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
-    return wrapper
-
-
 def role_required(*roles: str):
     def deco(fn):
         def wrapper(*args, **kwargs):
@@ -211,6 +209,14 @@ def role_required(*roles: str):
         wrapper.__name__ = fn.__name__
         return wrapper
     return deco
+
+
+def generate_tracking_code(n: int = 10) -> str:
+    # Alphanumeric, uppercase for readability
+    while True:
+        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=n))
+        if not Order.query.filter_by(tracking_code=code).first():
+            return code
 
 
 @app.before_request
@@ -299,7 +305,7 @@ def seed_if_empty():
             address="Near Hub",
         ))
 
-    # Customers (5)
+    # Customers (5) — kept for legacy data, but login is staff-only
     for i in range(1, 6):
         db.session.add(User(
             full_name=f"Customer {i}",
@@ -313,26 +319,26 @@ def seed_if_empty():
     db.session.commit()
 
 
-# -------------------- AUTH --------------------
+# -------------------- AUTH (Staff-only) --------------------
+
 @app.route("/")
 def home():
-    if not g.user:
-        return redirect(url_for("login"))
-    return redirect(url_for("role_redirect"))
+    # Public landing → restaurants list
+    return redirect(url_for("public_restaurants"))
 
 
 @app.route("/go")
-@login_required
 def role_redirect():
+    if not g.user:
+        return redirect(url_for("login"))
     t = g.user.type
     if t == "Admin":
         return redirect(url_for("admin_dashboard"))
-    if t == "Customer":
-        return redirect(url_for("customer_restaurants"))
     if t == "Delivery Agent":
         return redirect(url_for("agent_dashboard"))
     if t == "Restaurant Owner":
         return redirect(url_for("owner_dashboard"))
+    # No customer dashboard—customers browse publicly
     abort(403)
 
 
@@ -350,6 +356,11 @@ def login():
             flash("Invalid email or password.", "error")
             return render_template("login.html")
 
+        # Staff-only login
+        if u.type not in ("Admin", "Delivery Agent", "Restaurant Owner"):
+            flash("Login is restricted to staff (Admin/Owner/Agent).", "error")
+            return render_template("login.html")
+
         session["user_id"] = u.user_id
         return redirect(url_for("role_redirect"))
 
@@ -360,6 +371,290 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+# -------------------- PUBLIC (Customer-free browsing + cart + checkout) --------------------
+def get_cart():
+    return session.get("cart", {"restaurant_id": None, "items": {}})
+
+
+def save_cart(cart):
+    session["cart"] = cart
+
+
+@app.route("/restaurants")
+def public_restaurants():
+    # Filters: q, active_only, status
+    q = (request.args.get("q") or "").strip()
+    status = (request.args.get("status") or "").strip()  # Active/Inactive/Busy
+    active_only = (request.args.get("active_only") or "1") == "1"
+
+    query = Restaurant.query
+    if active_only:
+        query = query.filter_by(status="Active")
+    elif status in ("Active", "Inactive", "Busy"):
+        query = query.filter_by(status=status)
+    if q:
+        query = query.filter(Restaurant.name.like(f"%{q}%"))
+
+    restaurants = query.order_by(Restaurant.restaurant_id.desc()).all()
+    # Busy badges are driven by restaurant.status == "Busy"
+    return render_template("customer/restaurants.html", restaurants=restaurants, q=q, active_only=active_only, status=status)
+
+
+@app.route("/restaurant/<int:rid>")
+def public_restaurant_menu(rid: int):
+    r = Restaurant.query.get_or_404(rid)
+    if r.status == "Inactive":
+        flash("This restaurant is currently inactive.", "error")
+        return redirect(url_for("public_restaurants"))
+
+    category = (request.args.get("category") or "").strip()  # Food/Drink
+    only_available = (request.args.get("only_available") or "1") == "1"
+    q = (request.args.get("q") or "").strip()
+
+    query = MenuItem.query.filter_by(restaurant_id=r.restaurant_id)
+    if only_available:
+        query = query.filter_by(availability=True)
+    if category in ("Food", "Drink"):
+        query = query.filter_by(category=category)
+    if q:
+        query = query.filter(MenuItem.name.like(f"%{q}%"))
+
+    items = query.order_by(MenuItem.menu_id.desc()).all()
+    cart = get_cart()
+    return render_template("customer/restaurant_menu.html", r=r, items=items, cart=cart, category=category, only_available=only_available, q=q)
+
+
+@app.route("/cart")
+def public_cart():
+    cart = get_cart()
+    rest = Restaurant.query.get(cart["restaurant_id"]) if cart["restaurant_id"] else None
+    lines = []
+    total = Decimal("0.00")
+
+    if rest:
+        for mid_str, qty in cart["items"].items():
+            mi = MenuItem.query.get(int(mid_str))
+            if not mi:
+                continue
+            line_total = Decimal(str(mi.price)) * Decimal(str(qty))
+            total += line_total
+            lines.append((mi, qty, line_total))
+
+    return render_template("customer/cart.html", cart=cart, rest=rest, lines=lines, total=total)
+
+
+@app.route("/cart/add", methods=["POST"])
+def public_cart_add():
+    try:
+        rid = int(request.form["restaurant_id"])
+        mid = int(request.form["menu_id"])
+        qty = int(request.form.get("qty", "1"))
+
+        r = Restaurant.query.get_or_404(rid)
+        if r.status == "Inactive":
+            raise ValueError("Restaurant inactive.")
+        mi = MenuItem.query.get_or_404(mid)
+        if mi.restaurant_id != rid:
+            raise ValueError("Invalid item for this restaurant.")
+        if not mi.availability:
+            raise ValueError("Item unavailable.")
+        if qty <= 0:
+            raise ValueError("Qty must be >= 1")
+
+        cart = get_cart()
+        # Single-restaurant cart rule
+        if cart["restaurant_id"] and cart["restaurant_id"] != rid:
+            cart = {"restaurant_id": rid, "items": {}}
+
+        cart["restaurant_id"] = rid
+        cart["items"][str(mid)] = cart["items"].get(str(mid), 0) + qty
+        save_cart(cart)
+
+        flash("Added to cart.", "ok")
+    except Exception as e:
+        flash(str(e), "error")
+
+    return redirect(url_for("public_restaurant_menu", rid=rid))
+
+
+@app.route("/cart/update", methods=["POST"])
+def public_cart_update():
+    cart = get_cart()
+    new_items = {}
+    for k, v in request.form.items():
+        if not k.startswith("qty_"):
+            continue
+        mid = k.replace("qty_", "").strip()
+        try:
+            qty = int(v)
+        except Exception:
+            qty = 0
+        if qty > 0:
+            new_items[mid] = qty
+    cart["items"] = new_items
+    if not cart["items"]:
+        cart = {"restaurant_id": None, "items": {}}
+    save_cart(cart)
+    flash("Cart updated.", "ok")
+    return redirect(url_for("public_cart"))
+
+
+@app.route("/cart/clear", methods=["POST"])
+def public_cart_clear():
+    session["cart"] = {"restaurant_id": None, "items": {}}
+    flash("Cart cleared.", "ok")
+    return redirect(url_for("public_cart"))
+
+
+@app.route("/checkout", methods=["POST"])
+def public_checkout():
+    """
+    Guest checkout: collects name, phone, address, payment_method, delivery_instructions.
+    Generates tracking_code and timeline event.
+    """
+    try:
+        cart = get_cart()
+        if not cart["restaurant_id"] or not cart["items"]:
+            raise ValueError("Cart is empty.")
+
+        r = Restaurant.query.get_or_404(cart["restaurant_id"])
+        if r.status == "Inactive":
+            raise ValueError("Restaurant inactive.")
+
+        customer_name = (request.form.get("customer_name") or "").strip()
+        customer_phone = (request.form.get("customer_phone") or "").strip()
+        customer_address = (request.form.get("customer_address") or "").strip()
+        payment_method = (request.form.get("payment_method") or "COD").strip()
+        delivery_instructions = (request.form.get("delivery_instructions") or "").strip() or None
+
+        if not customer_name or not customer_phone or not customer_address:
+            raise ValueError("Name, phone, and address are required.")
+
+        order = Order(
+            user_id=g.user.user_id if g.user else None,  # if staff places an order
+            restaurant_id=r.restaurant_id,
+            status="Placed",
+            payment_method=payment_method,
+            delivery_instructions=delivery_instructions,
+            tracking_code=generate_tracking_code(),
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            customer_address=customer_address,
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        added = 0
+        for mid_str, qty in cart["items"].items():
+            mi = MenuItem.query.get(int(mid_str))
+            if not mi or mi.restaurant_id != r.restaurant_id or not mi.availability:
+                continue
+            db.session.add(OrderItem(
+                order_id=order.order_id,
+                menu_item_id=mi.menu_id,
+                quantity=int(qty),
+                price_at_purchase=mi.price,
+            ))
+            added += 1
+
+        if added == 0:
+            raise ValueError("No valid items to checkout.")
+
+        log_history(order.order_id, "Placed", g.user.user_id if g.user else None, "Order placed (guest/public)")
+        db.session.commit()
+
+        session["cart"] = {"restaurant_id": None, "items": {}}
+        flash(f"Order placed! Tracking Code: {order.tracking_code}", "ok")
+        return redirect(url_for("public_track", tracking_code=order.tracking_code))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(url_for("public_cart"))
+
+
+# -------------------- Public tracking + My Orders (phone verification) --------------------
+@app.route("/track")
+def public_track():
+    """
+    Track by tracking_code (query param or path).
+    """
+    tracking_code = (request.args.get("tracking_code") or "").strip().upper()
+    if not tracking_code:
+        flash("Enter a valid tracking code.", "error")
+        return render_template("customer/track.html", order=None)
+
+    order = Order.query.filter(func.upper(Order.tracking_code) == tracking_code).first()
+    if not order:
+        flash("Order not found for this tracking code.", "error")
+        return render_template("customer/track.html", order=None)
+
+    total = calc_order_total(order)
+    eta_label, eta_detail = eta_for_order(order)
+
+    last_loc = None
+    if order.delivery and order.delivery.locations:
+        last_loc = sorted(order.delivery.locations, key=lambda x: x.created_at)[-1]
+
+    history = OrderStatusHistory.query.filter_by(order_id=order.order_id).order_by(OrderStatusHistory.created_at.asc()).all()
+
+    return render_template(
+        "customer/track.html",
+        order=order,
+        total=total,
+        eta_label=eta_label,
+        eta_detail=eta_detail,
+        last_loc=last_loc,
+        history=history,
+    )
+
+
+@app.route("/my-orders", methods=["GET", "POST"])
+def public_my_orders():
+    """
+    Verify by phone_number, then list orders and allow reorder.
+    """
+    phone = None
+    orders = []
+    if request.method == "POST":
+        phone = (request.form.get("phone_number") or "").strip()
+        if not phone:
+            flash("Enter phone number.", "error")
+        else:
+            orders = Order.query.filter_by(customer_phone=phone).order_by(Order.order_id.desc()).limit(100).all()
+            if not orders:
+                flash("No orders found for this phone.", "error")
+
+    return render_template("customer/orders.html", orders=orders, calc_order_total=calc_order_total, phone=phone)
+
+
+@app.route("/reorder/<int:oid>", methods=["POST"])
+def public_reorder(oid: int):
+    """
+    Reorder: duplicates items from a previous order into cart (respect single-restaurant rule).
+    """
+    prev = Order.query.get_or_404(oid)
+    r = Restaurant.query.get_or_404(prev.restaurant_id)
+    if r.status == "Inactive":
+        flash("Restaurant inactive.", "error")
+        return redirect(url_for("public_restaurants"))
+
+    cart = {"restaurant_id": r.restaurant_id, "items": {}}
+    for it in prev.items:
+        mi = MenuItem.query.get(it.menu_item_id)
+        if not mi or not mi.availability:
+            continue
+        cart["items"][str(mi.menu_id)] = cart["items"].get(str(mi.menu_id), 0) + it.quantity
+
+    if not cart["items"]:
+        flash("No available items to reorder.", "error")
+        return redirect(url_for("public_restaurant_menu", rid=r.restaurant_id))
+
+    save_cart(cart)
+    flash("Items added from previous order.", "ok")
+    return redirect(url_for("public_cart"))
 
 
 # -------------------- ADMIN --------------------
@@ -405,7 +700,7 @@ def admin_restaurants():
     status = (request.args.get("status") or "").strip()
 
     query = Restaurant.query
-    if status in ("Active", "Inactive"):
+    if status in ("Active", "Inactive", "Busy"):
         query = query.filter_by(status=status)
     if q:
         query = query.filter(Restaurant.name.like(f"%{q}%"))
@@ -509,14 +804,25 @@ def admin_agent_delete(uid: int):
 @app.route("/admin/orders")
 @role_required("Admin")
 def admin_orders():
+    # Filters: status, q (tracking_code or phone)
     status = (request.args.get("status") or "").strip()
-    q = Order.query
-    if status in ("Placed", "Accepted", "Preparing", "Out for Delivery", "Delivered", "Cancelled"):
-        q = q.filter_by(status=status)
+    q = (request.args.get("q") or "").strip()
 
-    orders = q.order_by(Order.order_id.desc()).limit(50).all()
+    query = Order.query
+    if status in ("Placed", "Accepted", "Preparing", "Out for Delivery", "Delivered", "Cancelled"):
+        query = query.filter_by(status=status)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                Order.tracking_code.like(like),
+                Order.customer_phone.like(like),
+            )
+        )
+
+    orders = query.order_by(Order.order_id.desc()).limit(50).all()
     agents = User.query.filter_by(type="Delivery Agent").order_by(User.user_id.desc()).all()
-    return render_template("admin/orders.html", orders=orders, agents=agents, status=status)
+    return render_template("admin/orders.html", orders=orders, agents=agents, status=status, q=q)
 
 
 @app.route("/admin/orders/<int:oid>/assign", methods=["POST"])
@@ -549,229 +855,6 @@ def admin_assign_delivery(oid: int):
         db.session.rollback()
         flash(str(e), "error")
     return redirect(url_for("admin_orders"))
-
-
-# -------------------- CUSTOMER --------------------
-def get_cart():
-    return session.get("cart", {"restaurant_id": None, "items": {}})
-
-
-def save_cart(cart):
-    session["cart"] = cart
-
-
-@app.route("/customer/restaurants")
-@role_required("Customer")
-def customer_restaurants():
-    active_only = (request.args.get("active_only") or "1") == "1"
-    q = (request.args.get("q") or "").strip()
-
-    query = Restaurant.query
-    if active_only:
-        query = query.filter_by(status="Active")
-    if q:
-        query = query.filter(Restaurant.name.like(f"%{q}%"))
-
-    restaurants = query.order_by(Restaurant.restaurant_id.desc()).all()
-    return render_template("customer/restaurants.html", restaurants=restaurants, q=q, active_only=active_only)
-
-
-@app.route("/customer/restaurant/<int:rid>")
-@role_required("Customer")
-def customer_restaurant_menu(rid: int):
-    r = Restaurant.query.get_or_404(rid)
-    if r.status != "Active":
-        flash("This restaurant is currently inactive.", "error")
-        return redirect(url_for("customer_restaurants"))
-
-    category = (request.args.get("category") or "").strip()  # Food/Drink
-    only_available = (request.args.get("only_available") or "1") == "1"
-    q = (request.args.get("q") or "").strip()
-
-    query = MenuItem.query.filter_by(restaurant_id=r.restaurant_id)
-    if only_available:
-        query = query.filter_by(availability=True)
-    if category in ("Food", "Drink"):
-        query = query.filter_by(category=category)
-    if q:
-        query = query.filter(MenuItem.name.like(f"%{q}%"))
-
-    items = query.order_by(MenuItem.menu_id.desc()).all()
-    cart = get_cart()
-    return render_template("customer/restaurant_menu.html", r=r, items=items, cart=cart, category=category, only_available=only_available, q=q)
-
-
-@app.route("/customer/cart")
-@role_required("Customer")
-def customer_cart():
-    cart = get_cart()
-    rest = Restaurant.query.get(cart["restaurant_id"]) if cart["restaurant_id"] else None
-    lines = []
-    total = Decimal("0.00")
-
-    if rest:
-        for mid_str, qty in cart["items"].items():
-            mi = MenuItem.query.get(int(mid_str))
-            if not mi:
-                continue
-            line_total = Decimal(str(mi.price)) * Decimal(str(qty))
-            total += line_total
-            lines.append((mi, qty, line_total))
-
-    return render_template("customer/cart.html", cart=cart, rest=rest, lines=lines, total=total)
-
-
-@app.route("/customer/cart/add", methods=["POST"])
-@role_required("Customer")
-def customer_cart_add():
-    try:
-        rid = int(request.form["restaurant_id"])
-        mid = int(request.form["menu_id"])
-        qty = int(request.form.get("qty", "1"))
-
-        r = Restaurant.query.get_or_404(rid)
-        if r.status != "Active":
-            raise ValueError("Restaurant inactive.")
-
-        mi = MenuItem.query.get_or_404(mid)
-        if mi.restaurant_id != rid:
-            raise ValueError("Invalid item for this restaurant.")
-        if not mi.availability:
-            raise ValueError("Item unavailable.")
-        if qty <= 0:
-            raise ValueError("Qty must be >= 1")
-
-        cart = get_cart()
-
-        # One-restaurant cart rule
-        if cart["restaurant_id"] and cart["restaurant_id"] != rid:
-            cart = {"restaurant_id": rid, "items": {}}
-
-        cart["restaurant_id"] = rid
-        cart["items"][str(mid)] = cart["items"].get(str(mid), 0) + qty
-        save_cart(cart)
-
-        flash("Added to cart.", "ok")
-    except Exception as e:
-        flash(str(e), "error")
-
-    return redirect(url_for("customer_restaurant_menu", rid=rid))
-
-
-@app.route("/customer/cart/update", methods=["POST"])
-@role_required("Customer")
-def customer_cart_update():
-    cart = get_cart()
-    new_items = {}
-    for k, v in request.form.items():
-        if not k.startswith("qty_"):
-            continue
-        mid = k.replace("qty_", "").strip()
-        try:
-            qty = int(v)
-        except Exception:
-            qty = 0
-        if qty > 0:
-            new_items[mid] = qty
-    cart["items"] = new_items
-    if not cart["items"]:
-        cart = {"restaurant_id": None, "items": {}}
-    save_cart(cart)
-    flash("Cart updated.", "ok")
-    return redirect(url_for("customer_cart"))
-
-
-@app.route("/customer/cart/clear", methods=["POST"])
-@role_required("Customer")
-def customer_cart_clear():
-    session["cart"] = {"restaurant_id": None, "items": {}}
-    flash("Cart cleared.", "ok")
-    return redirect(url_for("customer_cart"))
-
-
-@app.route("/customer/checkout", methods=["POST"])
-@role_required("Customer")
-def customer_checkout():
-    try:
-        cart = get_cart()
-        if not cart["restaurant_id"] or not cart["items"]:
-            raise ValueError("Cart is empty.")
-
-        r = Restaurant.query.get_or_404(cart["restaurant_id"])
-        if r.status != "Active":
-            raise ValueError("Restaurant inactive.")
-
-        order = Order(
-            user_id=g.user.user_id,
-            restaurant_id=r.restaurant_id,
-            status="Placed",
-            payment_method=request.form["payment_method"],
-            delivery_instructions=(request.form.get("delivery_instructions") or "").strip() or None,
-        )
-        db.session.add(order)
-        db.session.flush()
-
-        added = 0
-        for mid_str, qty in cart["items"].items():
-            mi = MenuItem.query.get(int(mid_str))
-            if not mi or mi.restaurant_id != r.restaurant_id or not mi.availability:
-                continue
-            db.session.add(OrderItem(
-                order_id=order.order_id,
-                menu_item_id=mi.menu_id,
-                quantity=int(qty),
-                price_at_purchase=mi.price,
-            ))
-            added += 1
-
-        if added == 0:
-            raise ValueError("No valid items to checkout.")
-
-        log_history(order.order_id, "Placed", g.user.user_id, "Order placed by customer")
-        db.session.commit()
-
-        session["cart"] = {"restaurant_id": None, "items": {}}
-        flash(f"Order placed! Order ID: {order.order_id}", "ok")
-        return redirect(url_for("customer_track", oid=order.order_id))
-
-    except Exception as e:
-        db.session.rollback()
-        flash(str(e), "error")
-        return redirect(url_for("customer_cart"))
-
-
-@app.route("/customer/orders")
-@role_required("Customer")
-def customer_orders():
-    orders = Order.query.filter_by(user_id=g.user.user_id).order_by(Order.order_id.desc()).all()
-    return render_template("customer/orders.html", orders=orders, calc_order_total=calc_order_total)
-
-
-@app.route("/customer/order/<int:oid>")
-@role_required("Customer")
-def customer_track(oid: int):
-    order = Order.query.get_or_404(oid)
-    if order.user_id != g.user.user_id:
-        abort(403)
-
-    total = calc_order_total(order)
-    eta_label, eta_detail = eta_for_order(order)
-
-    last_loc = None
-    if order.delivery and order.delivery.locations:
-        last_loc = sorted(order.delivery.locations, key=lambda x: x.created_at)[-1]
-
-    history = OrderStatusHistory.query.filter_by(order_id=order.order_id).order_by(OrderStatusHistory.created_at.asc()).all()
-
-    return render_template(
-        "customer/track.html",
-        order=order,
-        total=total,
-        eta_label=eta_label,
-        eta_detail=eta_detail,
-        last_loc=last_loc,
-        history=history,
-    )
 
 
 # -------------------- RESTAURANT OWNER --------------------
@@ -991,6 +1074,11 @@ def agent_update_location(delivery_id: int):
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        # Add tracking_code to existing orders if missing (safe backfill)
+        for o in Order.query.filter((Order.tracking_code == None) | (Order.tracking_code == "")).all():  # noqa: E711
+            o.tracking_code = generate_tracking_code()
+        db.session.commit()
+
         seed_if_empty()
         print("DB ready + seed ensured.")
 

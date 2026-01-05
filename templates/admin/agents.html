@@ -2,27 +2,45 @@
 {% block content %}
 <h1>Delivery Agents</h1>
 
-<div class="card">
+<!-- Add new agent -->
+<div class="card glow">
   <div class="card-title">Add Agent</div>
   <form class="form" method="post">
     <div class="row">
-      <label>Full name <input name="full_name" required></label>
-      <label>Password <input name="password" type="password" required></label>
+      <label>Full name
+        <input name="full_name" placeholder="e.g. Rider Ali" required>
+      </label>
+      <label>Password
+        <input name="password" type="password" placeholder="••••••••" required>
+      </label>
     </div>
     <div class="row">
-      <label>Email <input name="email" type="email" required></label>
-      <label>Phone <input name="phone_number" required></label>
+      <label>Email
+        <input name="email" type="email" placeholder="agent@example.com" required>
+      </label>
+      <label>Phone
+        <input name="phone_number" placeholder="03xx-xxxxxxx" required>
+      </label>
     </div>
-    <label>Address <input name="address"></label>
-    <button class="btn primary" type="submit">Create</button>
+    <label>Address
+      <input name="address" placeholder="Optional address">
+    </label>
+    <button class="btn primary" type="submit">Create Agent</button>
   </form>
 </div>
 
-<div class="card subtle" style="margin-top:14px">
-  <div class="card-title">Edit / Delete</div>
+<!-- Existing agents -->
+<div class="card subtle" style="margin-top:16px">
+  <div class="card-title">Manage Agents</div>
   <div class="table">
     <div class="tr head">
-      <div>ID</div><div>Name</div><div>Phone</div><div>Address</div><div>Password</div><div>Save</div><div>Delete</div>
+      <div>ID</div>
+      <div>Name</div>
+      <div>Phone</div>
+      <div>Address</div>
+      <div>Password</div>
+      <div>Save</div>
+      <div>Delete</div>
     </div>
     {% for a in agents %}
     <form class="tr" method="post" action="{{ url_for('admin_agent_update', uid=a.user_id) }}">
@@ -30,14 +48,22 @@
       <div><input name="full_name" value="{{ a.full_name }}" required></div>
       <div><input name="phone_number" value="{{ a.phone_number }}" required></div>
       <div><input name="address" value="{{ a.address or '' }}"></div>
-      <div><input name="password" placeholder="(leave blank)"></div>
-      <div><button class="btn tiny primary" type="submit">Save</button></div>
+      <div><input name="password" placeholder="(leave blank to keep current)"></div>
       <div>
-        <button class="btn tiny warn" type="submit" formaction="{{ url_for('admin_agent_delete', uid=a.user_id) }}"
-          onclick="return confirm('Delete agent?');">Delete</button>
+        <button class="btn tiny primary" type="submit">Save</button>
+      </div>
+      <div>
+        <button class="btn tiny warn" type="submit"
+                formaction="{{ url_for('admin_agent_delete', uid=a.user_id) }}"
+                onclick="return confirm('Delete agent {{ a.full_name }}?');">
+          Delete
+        </button>
       </div>
     </form>
     {% endfor %}
+    {% if not agents %}
+      <p class="muted" style="padding:10px">No delivery agents found. Add your first agent above.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

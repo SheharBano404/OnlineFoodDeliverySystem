@@ -2,6 +2,7 @@
 {% block content %}
 <h1>Admin Dashboard</h1>
 
+<!-- KPI summary -->
 <div class="kpi">
   <div class="kpi-card">
     <div class="kpi-title">Restaurants</div>
@@ -20,22 +21,39 @@
   </div>
 </div>
 
-<div class="card">
+<!-- Recent orders -->
+<div class="card glow" style="margin-top:16px">
   <div class="card-title">Recent Orders</div>
   <div class="table">
     <div class="tr head">
-      <div>#</div><div>Customer</div><div>Restaurant</div><div>Status</div><div>Total</div><div>Action</div>
+      <div>#</div>
+      <div>Customer</div>
+      <div>Restaurant</div>
+      <div>Status</div>
+      <div>Total</div>
+      <div>Placed</div>
+      <div>Action</div>
     </div>
     {% for o in recent_orders %}
       <div class="tr">
         <div>#{{ o.order_id }}</div>
-        <div>{{ o.user.full_name }}</div>
+        <div>{{ o.customer_name or o.user.full_name }}</div>
         <div>{{ o.restaurant.name }}</div>
-        <div><span class="tag">{{ o.status }}</span></div>
+        <div>
+          <span class="tag {% if o.status == 'Delivered' %}ok{% elif o.status == 'Cancelled' %}warn{% endif %}">
+            {{ o.status }}
+          </span>
+        </div>
         <div>PKR {{ money_str(calc_order_total(o)) }}</div>
-        <div><a class="pill" href="{{ url_for('admin_orders') }}">Open Orders</a></div>
+        <div>{{ o.placed_at }}</div>
+        <div>
+          <a class="pill" href="{{ url_for('admin_orders', status=o.status) }}">Manage</a>
+        </div>
       </div>
     {% endfor %}
+    {% if not recent_orders %}
+      <p class="muted" style="padding:10px">No recent orders found.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

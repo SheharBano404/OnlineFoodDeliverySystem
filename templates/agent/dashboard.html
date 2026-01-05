@@ -2,22 +2,38 @@
 {% block content %}
 <h1>My Deliveries</h1>
 
-<div class="card">
-  <div class="card-title">Assigned</div>
+<div class="card glow">
+  <div class="card-title">Assigned Deliveries</div>
   <div class="table">
     <div class="tr head">
-      <div>Delivery ID</div><div>Order</div><div>Status</div><div>Restaurant</div><div>Total</div><div>Open</div>
+      <div>Delivery ID</div>
+      <div>Order</div>
+      <div>Status</div>
+      <div>Restaurant</div>
+      <div>Total</div>
+      <div>Placed</div>
+      <div>Open</div>
     </div>
     {% for d in deliveries %}
       <div class="tr">
         <div>#{{ d.delivery_id }}</div>
         <div>#{{ d.order_id }}</div>
-        <div><span class="tag">{{ d.status }}</span></div>
+        <div>
+          <span class="tag {% if d.status == 'Dropped' %}ok{% elif d.status == 'Assigned' %}{% else %}warn{% endif %}">
+            {{ d.status }}
+          </span>
+        </div>
         <div>{{ d.order.restaurant.name }}</div>
         <div>PKR {{ money_str(calc_order_total(d.order)) }}</div>
-        <div><a class="pill" href="{{ url_for('agent_order', oid=d.order_id) }}">Open</a></div>
+        <div>{{ d.order.placed_at }}</div>
+        <div>
+          <a class="pill" href="{{ url_for('agent_order', oid=d.order_id) }}">Open</a>
+        </div>
       </div>
     {% endfor %}
+    {% if not deliveries %}
+      <p class="muted" style="padding:10px">No deliveries assigned yet.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

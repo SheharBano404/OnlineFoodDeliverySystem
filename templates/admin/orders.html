@@ -2,6 +2,7 @@
 {% block content %}
 <h1>Orders & Delivery Assign</h1>
 
+<!-- Filter form -->
 <form class="form card subtle" method="get">
   <div class="row">
     <label>Status
@@ -12,25 +13,43 @@
         {% endfor %}
       </select>
     </label>
+    <label>
+      Search
+      <input name="q" value="{{ q or '' }}" placeholder="Tracking code / Phone">
+    </label>
   </div>
-  <button class="btn" type="submit">Filter</button>
+  <div class="row" style="margin-top:10px;justify-content:flex-end;gap:10px">
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn ghost" href="{{ url_for('admin_dashboard') }}">Back to Dashboard</a>
+  </div>
 </form>
 
-<div class="card" style="margin-top:14px">
+<!-- Orders table -->
+<div class="card glow" style="margin-top:16px">
   <div class="card-title">Latest Orders (50)</div>
-
   <div class="table">
     <div class="tr head">
-      <div>#</div><div>Customer</div><div>Restaurant</div><div>Status</div><div>Total</div><div>Assign Agent</div>
+      <div>#</div>
+      <div>Customer</div>
+      <div>Restaurant</div>
+      <div>Status</div>
+      <div>Total</div>
+      <div>Placed</div>
+      <div>Assign Agent</div>
     </div>
 
     {% for o in orders %}
     <form class="tr" method="post" action="{{ url_for('admin_assign_delivery', oid=o.order_id) }}">
       <div>#{{ o.order_id }}</div>
-      <div>{{ o.user.full_name }}</div>
+      <div>{{ o.customer_name or o.user.full_name }}</div>
       <div>{{ o.restaurant.name }}</div>
-      <div><span class="tag">{{ o.status }}</span></div>
+      <div>
+        <span class="tag {% if o.status == 'Delivered' %}ok{% elif o.status == 'Cancelled' %}warn{% endif %}">
+          {{ o.status }}
+        </span>
+      </div>
       <div>PKR {{ money_str(calc_order_total(o)) }}</div>
+      <div>{{ o.placed_at }}</div>
 
       <div class="row">
         <select name="delivery_agent_id" required>
@@ -47,6 +66,9 @@
       </div>
     </form>
     {% endfor %}
+    {% if not orders %}
+      <p class="muted" style="padding:10px">No orders found for this filter.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
